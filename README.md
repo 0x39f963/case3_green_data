@@ -18,7 +18,7 @@ SQL, прогоняет deterministic guard, EXPLAIN-песочницу и LLM-�
 | Intent classifier | `app/intent_classifier.py` | Быстрая классификация намерения запроса без LLM. |
 | SQL parser and guard | `app/sql_parsing.py`, `app/sql_guard.py`, `app/audit_tools.py`, `app/sensitive_detector.py` | AST-разбор SQL, deterministic security rules, признаки sensitive data. |
 | Classifier | `app/classifier/` | Rule/ML/encoder ensemble и LLM judge для классов риска. |
-| RAG adapter | `app/rag_adapter.py`, `data/rag/v2/table_knowledge_index_v2.csv` | Выбор релевантного schema/security контекста для generator и auditor, фильтрация bridge-таблиц. |
+| RAG adapter | `app/rag_adapter.py` | Выбор релевантного schema/security контекста для generator и auditor. |
 | Generator | `app/generator.py`, `app/generator_selector.py` | Генерация SQL, multi-candidate режим и выбор лучшего кандидата. |
 | Tool loop | `app/tool_loop.py`, `app/tools/` | Agentic tool-calling режим: проверка hallucination, sensitive fields, approved joins и EXPLAIN. |
 | Auditor | `app/auditor.py` | Hybrid-аудит SQL: deterministic findings + LLM security review. |
@@ -106,8 +106,6 @@ case3/
 |   |-- prompts/
 |   `-- static/audit_reviews/sql_event_specs.json
 |-- data/
-|   |-- rag/
-|   |   `-- v2/table_knowledge_index_v2.csv
 |   `-- eval/
 |       |-- dataset.schema.json
 |       |-- dataset_v0_1.jsonl
