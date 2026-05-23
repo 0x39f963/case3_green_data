@@ -1,0 +1,419 @@
+{
+  "request_id": "sample_trace_123",
+  "task": "Покажи активных сотрудников по подразделениям за последний месяц.",
+  "started_at": "2026-05-17T21:34:04.891294+00:00",
+  "finished_at": "2026-05-17T21:34:05.419821+00:00",
+  "duration_sec": 0.529,
+  "events": [
+    {
+      "node": "prompt_check",
+      "started_at": "2026-05-17T21:34:04.908965+00:00",
+      "inputs": {
+        "task_length": 65
+      },
+      "outputs": {
+        "vuln_count": 0
+      },
+      "details": {
+        "findings": []
+      },
+      "finished_at": "2026-05-17T21:34:04.910189+00:00",
+      "duration_sec": 0.001
+    },
+    {
+      "node": "retrieve",
+      "started_at": "2026-05-17T21:34:04.910978+00:00",
+      "inputs": {
+        "task": "Покажи активных сотрудников по подразделениям за последний месяц."
+      },
+      "outputs": {
+        "context_length": 0,
+        "allowed_tables": [
+          "offices_psb",
+          "sys_employee"
+        ]
+      },
+      "details": {
+        "generation_context": "",
+        "allowed_columns": {
+          "offices_psb": [
+            "id",
+            "name__ru",
+            "name__en",
+            "name",
+            "create_date",
+            "type_id",
+            "status",
+            "org_id",
+            "user_id",
+            "last_modified_date",
+            "last_modified_user_id",
+            "created_emp_id",
+            "last_modified_emp_id",
+            "is_system",
+            "parent_org_id",
+            "short_name__ru",
+            "short_name__en",
+            "short_name",
+            "view_id",
+            "main_org",
+            "org_company",
+            "ident",
+            "office_id",
+            "office_name",
+            "office_address",
+            "office_code",
+            "office_date_from",
+            "office_date_to",
+            "office_type",
+            "office_status",
+            "office_sign_active",
+            "psb_dep_org",
+            "rout_office_id",
+            "lvl_org",
+            "feat_org",
+            "is_region",
+            "work_org",
+            "etl_marker_org",
+            "id_parent_org",
+            "id_depart_org",
+            "id_parent_corr_org"
+          ],
+          "sys_employee": [
+            "id",
+            "name",
+            "type_id",
+            "org_id",
+            "status",
+            "create_date",
+            "user_id",
+            "emp_org_id",
+            "name__en",
+            "name__ru",
+            "first_name",
+            "second_name",
+            "sur_name",
+            "job_pos_id",
+            "email",
+            "birthday",
+            "phone",
+            "skype",
+            "created_emp_id",
+            "last_modified_user_id",
+            "last_modified_emp_id",
+            "last_modified_date",
+            "is_system",
+            "time_zone",
+            "sys_image",
+            "is_locked",
+            "workday_schedule_id",
+            "email_confirmed",
+            "phone_confirmed",
+            "ban_send_notifications",
+            "city_id",
+            "sex_id",
+            "locale_id",
+            "sur_name__ru",
+            "sur_name__en",
+            "first_name__ru",
+            "first_name__en",
+            "second_name__ru",
+            "second_name__en",
+            "ps_office",
+            "adress_ad",
+            "pers_emp_number",
+            "inner_emp_phone",
+            "pers_opt_dmm_link"
+          ]
+        },
+        "allowed_objects": "Разрешенные таблицы и колонки (используй только их):\n- offices_psb: id, name__ru, name__en, name, create_date, type_id, status, org_id, user_id, last_modified_date, last_modified_user_id, created_emp_id, last_modified_emp_id, is_system, parent_org_id, short_name__ru, short_name__en, short_name, view_id, main_org, org_company, ident, office_id, office_name, office_address, office_code, office_date_from, office_date_to, office_type, office_status, office_sign_active, psb_dep_org, rout_office_id, lvl_org, feat_org, is_region, work_org, etl_marker_org, id_parent_org, id_depart_org, ...\n- sys_employee: id, name, type_id, org_id, status, create_date, user_id, emp_org_id, name__en, name__ru, first_name, second_name, sur_name, job_pos_id, email, birthday, phone, skype, created_emp_id, last_modified_user_id, last_modified_emp_id, last_modified_date, is_system, time_zone, sys_image, is_locked, workday_schedule_id, email_confirmed, phone_confirmed, ban_send_notifications, city_id, sex_id, locale_id, sur_name__ru, sur_name__en, first_name__ru, first_name__en, second_name__ru, second_name__en, ps_office, ..."
+      },
+      "finished_at": "2026-05-17T21:34:04.918041+00:00",
+      "duration_sec": 0.007
+    },
+    {
+      "node": "generate",
+      "started_at": "2026-05-17T21:34:04.918458+00:00",
+      "inputs": {
+        "iteration": 1,
+        "task": "Покажи активных сотрудников по подразделениям за последний месяц.",
+        "prior_sql_count": 0
+      },
+      "outputs": {
+        "sql": "SELECT id, name FROM sys_employee ORDER BY id LIMIT 100",
+        "candidate_count": 2,
+        "selected_index": 0
+      },
+      "details": {
+        "prompt_system": "Ты пишешь SQL для PostgreSQL по описанию задачи на русском языке.\n\nПравила, которым нужно следовать всегда:\n- В ответе только сам SQL. Без объяснений, без markdown-блоков, без префиксов.\n- Используй только те имена таблиц и колонок, которые перечислены в контексте ниже. Не выдумывай новые имена. Не подменяй отсутствующую колонку похожей по смыслу.\n- Если в контексте нет ни одной колонки, нужной для задачи, верни одну строку вида: SELECT 'INSUFFICIENT_CONTEXT' AS reason, '<краткое описание чего не хватает>' AS missing; - это сигнал оркестратору, а не выдуманный запрос.\n- По умолчанию пиши явный список колонок, ORDER BY и LIMIT 100 для выборок.\n- Никаких SELECT звездочка.\n- Никаких UPDATE и DELETE без WHERE.\n- Все пользовательские значения подставляй параметрами вида $1, $2, не конкатенацией строк.\n- Никаких pg_sleep, никаких UNION в местах, где их не просят.\n- Если задача неоднозначна, выбери самую безопасную интерпретацию.\n- Возвращай ровно один SQL-оператор. Никаких составных запросов через точку с запятой.\n",
+        "prompt_user": "Задача аналитика:\nПокажи активных сотрудников по подразделениям за последний месяц.\n\nКонтекст из памяти (релевантные таблицы и шаблоны PostgreSQL):\n\n\nРазрешенные таблицы и колонки (используй только их):\n- offices_psb: id, name__ru, name__en, name, create_date, type_id, status, org_id, user_id, last_modified_date, last_modified_user_id, created_emp_id, last_modified_emp_id, is_system, parent_org_id, short_name__ru, short_name__en, short_name, view_id, main_org, org_company, ident, office_id, office_name, office_address, office_code, office_date_from, office_date_to, office_type, office_status, office_sign_active, psb_dep_org, rout_office_id, lvl_org, feat_org, is_region, work_org, etl_marker_org, id_parent_org, id_depart_org, ...\n- sys_employee: id, name, type_id, org_id, status, create_date, user_id, emp_org_id, name__en, name__ru, first_name, second_name, sur_name, job_pos_id, email, birthday, phone, skype, created_emp_id, last_modified_user_id, last_modified_emp_id, last_modified_date, is_system, time_zone, sys_image, is_locked, workday_schedule_id, email_confirmed, phone_confirmed, ban_send_notifications, city_id, sex_id, locale_id, sur_name__ru, sur_name__en, first_name__ru, first_name__en, second_name__ru, second_name__en, ps_office, ...\n\nНапиши один SQL-запрос, который решает задачу. В ответе только SQL.\n",
+        "generation_context": "",
+        "allowed_objects": "Разрешенные таблицы и колонки (используй только их):\n- offices_psb: id, name__ru, name__en, name, create_date, type_id, status, org_id, user_id, last_modified_date, last_modified_user_id, created_emp_id, last_modified_emp_id, is_system, parent_org_id, short_name__ru, short_name__en, short_name, view_id, main_org, org_company, ident, office_id, office_name, office_address, office_code, office_date_from, office_date_to, office_type, office_status, office_sign_active, psb_dep_org, rout_office_id, lvl_org, feat_org, is_region, work_org, etl_marker_org, id_parent_org, id_depart_org, ...\n- sys_employee: id, name, type_id, org_id, status, create_date, user_id, emp_org_id, name__en, name__ru, first_name, second_name, sur_name, job_pos_id, email, birthday, phone, skype, created_emp_id, last_modified_user_id, last_modified_emp_id, last_modified_date, is_system, time_zone, sys_image, is_locked, workday_schedule_id, email_confirmed, phone_confirmed, ban_send_notifications, city_id, sex_id, locale_id, sur_name__ru, sur_name__en, first_name__ru, first_name__en, second_name__ru, second_name__en, ps_office, ...",
+        "response_raw": [
+          "SELECT id, name FROM sys_employee ORDER BY id LIMIT 100",
+          "SELECT id, name FROM sys_employee ORDER BY id LIMIT 100"
+        ],
+        "response_sql": [
+          "SELECT id, name FROM sys_employee ORDER BY id LIMIT 100",
+          "SELECT id, name FROM sys_employee ORDER BY id LIMIT 100"
+        ],
+        "candidate_count": 2,
+        "multi_candidate": true,
+        "temperature": 0.5,
+        "backend": "fake",
+        "model": "fake-smoke",
+        "iteration": 1,
+        "generate_candidates": [
+          "SELECT id, name FROM sys_employee ORDER BY id LIMIT 100",
+          "SELECT id, name FROM sys_employee ORDER BY id LIMIT 100"
+        ],
+        "selector_scores": [
+          {
+            "broken": false,
+            "critical_count": 0,
+            "finding_count": 0,
+            "labels": [],
+            "length": 55,
+            "parse_error": null
+          },
+          {
+            "broken": false,
+            "critical_count": 0,
+            "finding_count": 0,
+            "labels": [],
+            "length": 55,
+            "parse_error": null
+          }
+        ],
+        "ast_tree": {
+          "ok": true,
+          "error": null,
+          "tree": {
+            "version": 170007,
+            "stmts": [
+              {
+                "stmt": {
+                  "SelectStmt": {
+                    "targetList": [
+                      {
+                        "ResTarget": {
+                          "val": {
+                            "ColumnRef": {
+                              "fields": [
+                                {
+                                  "String": {
+                                    "sval": "id"
+                                  }
+                                }
+                              ],
+                              "location": 7
+                            }
+                          },
+                          "location": 7
+                        }
+                      },
+                      {
+                        "ResTarget": {
+                          "val": {
+                            "ColumnRef": {
+                              "fields": [
+                                {
+                                  "String": {
+                                    "sval": "name"
+                                  }
+                                }
+                              ],
+                              "location": 11
+                            }
+                          },
+                          "location": 11
+                        }
+                      }
+                    ],
+                    "fromClause": [
+                      {
+                        "RangeVar": {
+                          "relname": "sys_employee",
+                          "inh": true,
+                          "relpersistence": "p",
+                          "location": 21
+                        }
+                      }
+                    ],
+                    "sortClause": [
+                      {
+                        "SortBy": {
+                          "node": {
+                            "ColumnRef": {
+                              "fields": [
+                                {
+                                  "String": {
+                                    "sval": "id"
+                                  }
+                                }
+                              ],
+                              "location": 43
+                            }
+                          },
+                          "sortby_dir": "SORTBY_DEFAULT",
+                          "sortby_nulls": "SORTBY_NULLS_DEFAULT",
+                          "location": -1
+                        }
+                      }
+                    ],
+                    "limitCount": {
+                      "A_Const": {
+                        "ival": {
+                          "ival": 100
+                        },
+                        "location": 52
+                      }
+                    },
+                    "limitOption": "LIMIT_OPTION_COUNT",
+                    "op": "SETOP_NONE"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "diff": ""
+      },
+      "finished_at": "2026-05-17T21:34:04.934991+00:00",
+      "duration_sec": 0.017
+    },
+    {
+      "node": "sql_guard",
+      "started_at": "2026-05-17T21:34:04.935831+00:00",
+      "inputs": {
+        "sql_length": 55
+      },
+      "outputs": {
+        "vuln_count": 0
+      },
+      "details": {
+        "findings": [],
+        "evidence": [],
+        "ast_tree": {
+          "ok": true,
+          "error": null,
+          "tree": {
+            "version": 170007,
+            "stmts": [
+              {
+                "stmt": {
+                  "SelectStmt": {
+                    "targetList": [
+                      {
+                        "ResTarget": {
+                          "val": {
+                            "ColumnRef": {
+                              "fields": [
+                                {
+                                  "String": {
+                                    "sval": "id"
+                                  }
+                                }
+                              ],
+                              "location": 7
+                            }
+                          },
+                          "location": 7
+                        }
+                      },
+                      {
+                        "ResTarget": {
+                          "val": {
+                            "ColumnRef": {
+                              "fields": [
+                                {
+                                  "String": {
+                                    "sval": "name"
+                                  }
+                                }
+                              ],
+                              "location": 11
+                            }
+                          },
+                          "location": 11
+                        }
+                      }
+                    ],
+                    "fromClause": [
+                      {
+                        "RangeVar": {
+                          "relname": "sys_employee",
+                          "inh": true,
+                          "relpersistence": "p",
+                          "location": 21
+                        }
+                      }
+                    ],
+                    "sortClause": [
+                      {
+                        "SortBy": {
+                          "node": {
+                            "ColumnRef": {
+                              "fields": [
+                                {
+                                  "String": {
+                                    "sval": "id"
+                                  }
+                                }
+                              ],
+                              "location": 43
+                            }
+                          },
+                          "sortby_dir": "SORTBY_DEFAULT",
+                          "sortby_nulls": "SORTBY_NULLS_DEFAULT",
+                          "location": -1
+                        }
+                      }
+                    ],
+                    "limitCount": {
+                      "A_Const": {
+                        "ival": {
+                          "ival": 100
+                        },
+                        "location": 52
+                      }
+                    },
+                    "limitOption": "LIMIT_OPTION_COUNT",
+                    "op": "SETOP_NONE"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "finished_at": "2026-05-17T21:34:04.937728+00:00",
+      "duration_sec": 0.002
+    }
+  ],
+  "result": {
+    "approved": true,
+    "iterations_used": 1,
+    "overall_risk_score": 0.0,
+    "final_sql": "SELECT id, name FROM sys_employee ORDER BY id LIMIT 100",
+    "audit_log": "Задача: Покажи активных сотрудников по подразделениям за последний месяц.\n\nВердикт: одобрен. Использовано итераций: 1.\nРежим модели: prod_demo, генератор: qwen/qwen2.5-coder-7b-instruct, аудитор: openai/gpt-4o-mini.\n\nИтерация 1:\n  SQL: SELECT id, name FROM sys_employee ORDER BY id LIMIT 100\n  Аудит: одобрено, риск 0, уязвимостей: 0\n  Сводка аудитора: Запрос одобрен. Уязвимостей не найдено ни правилами, ни моделью. План запроса EXPLAIN построен без ошибок.\n\nФинальный SQL:\nSELECT id, name FROM sys_employee ORDER BY id LIMIT 100\n\nИтог считается безопасным: ни правила, ни модель не нашли уязвимостей, EXPLAIN-план построен без ошибок. Запрос можно передать на ручное ревью.",
+    "metadata": {
+      "duration_sec": 0.528,
+      "trace_id": "20260517T213404_65d46b55",
+      "task": "Покажи активных сотрудников по подразделениям за последний месяц.",
+      "decision": "approve",
+      "needs_human": false,
+      "human_reason": "",
+      "mode": "prod_demo",
+      "generator_backend": "openrouter",
+      "auditor_backend": "openrouter",
+      "generator_model_key": "qwen-coder-7b",
+      "generator_provider": "openrouter",
+      "generator_context_window": "32768",
+      "generator_model": "qwen/qwen2.5-coder-7b-instruct",
+      "auditor_model": "openai/gpt-4o-mini",
+      "llm_call_timeout_sec": "30"
+    }
+  },
+  "error": null
+}

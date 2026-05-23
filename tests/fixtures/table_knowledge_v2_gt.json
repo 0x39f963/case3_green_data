@@ -1,0 +1,24 @@
+{
+  "queries": [
+    {
+      "task": "выведи все заявки на кредит со статусом одобрено за последний месяц",
+      "expected_top_tables": ["ic_application", "mler_application", "corp_tech_application"]
+    },
+    {
+      "task": "найди компании клиентов контрагентов заемщиков и участников сделки",
+      "expected_top_tables": ["sys_company", "participant_app", "business_segment"]
+    },
+    {
+      "task": "посчитай сумму лимитов и сублимитов по крупным корпоративным клиентам",
+      "expected_top_tables": ["scp_decision_quest", "product_pricing", "corp_tech_application"]
+    },
+    {
+      "task": "посмотри рейтинг компании контрагента класс риска лимит",
+      "expected_top_tables": ["corp_tech_application", "credit_contract", "scp_decision_quest"]
+    },
+    {
+      "task": "перечисли проверки СЭБ по контрагентам со статусом в работе",
+      "expected_top_tables": ["scp_part_sec_expertise", "scp_sec_expertise", "scp_sec_check_res"]
+    }
+  ]
+}

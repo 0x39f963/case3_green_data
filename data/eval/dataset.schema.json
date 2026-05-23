@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://case3.local/sql-security/dataset-v1.0.schema.json",
+  "title": "Case 3 SQL Security Dataset v1.0",
+  "type": "object",
+  "required": [
+    "id",
+    "task",
+    "attack_prompt",
+    "sql",
+    "dialect",
+    "schema_scope",
+    "schema_context",
+    "risk_labels",
+    "severity",
+    "evidence_span",
+    "safe_rewrite",
+    "source",
+    "split",
+    "intent_labels",
+    "sql_labels",
+    "baseline_labels",
+    "schema_area",
+    "task_family",
+    "model_source",
+    "judge_label_version",
+    "parse_status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^case3_sqlsec_[0-9]{6}$"
+    },
+    "task": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attack_prompt": {
+      "type": ["string", "null"]
+    },
+    "sql": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dialect": {
+      "const": "postgresql"
+    },
+    "schema_scope": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 1
+    },
+    "schema_context": {
+      "type": "string",
+      "minLength": 1
+    },
+    "risk_labels": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "severity": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "evidence_span": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "safe_rewrite": {
+      "type": ["string", "null"]
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "public_payload_mutation",
+        "synthetic_case3",
+        "redteam_private"
+      ]
+    },
+    "split": {
+      "type": "string",
+      "enum": ["train", "valid", "test", "redteam_holdout"]
+    },
+    "intent_labels": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "sql_labels": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "baseline_labels": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "schema_area": {
+      "type": "string"
+    },
+    "task_family": {
+      "type": "string"
+    },
+    "model_source": {
+      "type": "string"
+    },
+    "judge_label_version": {
+      "type": "string"
+    },
+    "parse_status": {
+      "type": "string",
+      "enum": ["parsed", "parser_error", "explain_error"]
+    },
+    "eval_suite": {
+      "type": "string"
+    },
+    "language": {
+      "type": "string",
+      "enum": ["ru", "en"]
+    },
+    "taxonomy_version": {
+      "type": "string"
+    },
+    "source_seed_id": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}
