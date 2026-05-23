@@ -1,0 +1,1927 @@
+{
+  "version": "v1.0",
+  "generated_at": "2026-05-17T18:27:32Z",
+  "global": {
+    "default_allowed_ops": [
+      "SELECT"
+    ],
+    "default_denied_ops": [
+      "INSERT",
+      "UPDATE",
+      "DELETE",
+      "TRUNCATE",
+      "DROP",
+      "ALTER",
+      "GRANT",
+      "REVOKE",
+      "COPY"
+    ]
+  },
+  "tables": {
+    "acc_number": {
+      "aliases": [],
+      "business_description": "ОСВ: Номер счета (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "acc_number",
+          "on": "parent_acc",
+          "to_column": "id"
+        }
+      ]
+    },
+    "afhd_ac_trans_link": {
+      "aliases": [],
+      "business_description": "АФХД. Промежуточный тип операции карточки счета  (декомпозиция) (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "large",
+      "pii_tags": {
+        "debit_credit_id": "credit_data"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_object",
+          "on": "obj_owner_id",
+          "to_column": "id"
+        },
+        {
+          "to": "acc_number",
+          "on": "account_num_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_object",
+          "on": "consolidation_obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "count_turnover",
+          "on": "cnt_turnover_id",
+          "to_column": "id"
+        },
+        {
+          "to": "afhd_ac_trans_link",
+          "on": "copy_source_ac_tr_l_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "sys_obj_type": {
+      "aliases": [],
+      "business_description": "Тип объекта в Системе (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "large",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_obj_type",
+          "on": "parent_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "sys_object": {
+      "aliases": [],
+      "business_description": "Объект, SysObjectType{id=2, name='Объект', ident='SYS_OBJECT'} (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": []
+    },
+    "application_obj": {
+      "aliases": [
+        "базовые заявки",
+        "заявка",
+        "объект заявки",
+        "application objects"
+      ],
+      "business_description": "Базовая сущность заявки, связывает состояние, бизнес-сегмент, продукт и ответственного менеджера.",
+      "cardinality_hint": "large",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_state",
+          "on": "afp_state_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_dict_tech_ctredit",
+          "on": "scp_tech_ctredit",
+          "to_column": "id"
+        },
+        {
+          "to": "business_segment",
+          "on": "scp_business_segment",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_object",
+          "on": "initiator_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "emp_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "business_segment": {
+      "aliases": [
+        "сегменты бизнеса",
+        "клиентские сегменты",
+        "business segments"
+      ],
+      "business_description": "Справочник сегментов бизнеса клиента для группировки компаний и заявок.",
+      "cardinality_hint": "small",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": []
+    },
+    "cb_interest_rate": {
+      "aliases": [],
+      "business_description": "Процентная ставка ЦБ (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "small",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": []
+    },
+    "corp_tech_application": {
+      "aliases": [
+        "кт заявки",
+        "корпоративные заявки",
+        "corporate applications"
+      ],
+      "business_description": "Корпоративно-технологические заявки с участниками, состояниями, регионами и ответственными сотрудниками.",
+      "cardinality_hint": "large",
+      "pii_tags": {
+        "credit_logic_id": "credit_logic",
+        "cred_depart_opinion_txt": "credit_opinion"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_employee",
+          "on": "collat_initiator_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_state",
+          "on": "auto_check_status",
+          "to_column": "id"
+        },
+        {
+          "to": "dict_div_presence",
+          "on": "deleg_region_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_techcred",
+          "on": "credit_logic_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "iniciator_emp_id",
+          "to_column": "id"
+        },
+        {
+          "to": "offices_psb",
+          "on": "exp_fa_office_id",
+          "to_column": "id"
+        },
+        {
+          "to": "fs_file",
+          "on": "interm_file_storage",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "scp_arm_manager_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_company",
+          "on": "initiator_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_dict_tech_ctredit",
+          "on": "scp_tech_ctredit",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "emp_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_state",
+          "on": "afp_state_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "resp_cond_coord",
+          "to_column": "id"
+        },
+        {
+          "to": "business_segment",
+          "on": "scp_business_segment",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "scp_cheif_cm_id",
+          "to_column": "id"
+        },
+        {
+          "to": "offices_psb",
+          "on": "ca_rout_office_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "count_turnover": {
+      "aliases": [],
+      "business_description": "Субконто счет (примитив) (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "large",
+      "pii_tags": {
+        "turnover_credit": "credit_data",
+        "output_balance_credit": "credit_data",
+        "input_balace_credit": "credit_data"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "tbs_type",
+          "on": "correct_type",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_company",
+          "on": "link_cnt_owner",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_object",
+          "on": "link_partic_gr",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_object",
+          "on": "link_cred_doc_tur",
+          "to_column": "id"
+        },
+        {
+          "to": "acc_number",
+          "on": "account_num_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_object",
+          "on": "link_load_val_id",
+          "to_column": "id"
+        },
+        {
+          "to": "count_turnover",
+          "on": "parent_link_count",
+          "to_column": "id"
+        }
+      ]
+    },
+    "credit_contract": {
+      "aliases": [
+        "кредитные договоры",
+        "договоры кредита",
+        "кредиты",
+        "credit contracts",
+        "loans"
+      ],
+      "business_description": "Кредитные договоры клиентов: номер договора, суммы, сроки, продукт, клиент и ответственный сотрудник.",
+      "cardinality_hint": "large",
+      "pii_tags": {
+        "credit_contract_number": "contract_id",
+        "credit_amount": "financial_amount",
+        "credit_start_date": "date",
+        "credit_end_date": "date",
+        "credit_product": "financial_product",
+        "uid_credit": "contract_id"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_state",
+          "on": "afp_state_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_company",
+          "on": "link_customer_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "sys_employee_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "dict_div_presence": {
+      "aliases": [],
+      "business_description": "Справочник: регионы присутствия подразделений Банка (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "small",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": []
+    },
+    "dict_product": {
+      "aliases": [
+        "продукты",
+        "кредитные продукты",
+        "справочник продуктов",
+        "products"
+      ],
+      "business_description": "Справочник банковских продуктов и параметров лимитов, сроков и ставок.",
+      "cardinality_hint": "medium",
+      "pii_tags": {
+        "term_limit_credit": "credit_terms",
+        "max_sum_credit": "financial_amount",
+        "min_sum_credit": "financial_amount",
+        "credit_interest_rate": "financial_rate"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "business_segment",
+          "on": "attr_business_segment",
+          "to_column": "id"
+        }
+      ]
+    },
+    "fs_file": {
+      "aliases": [],
+      "business_description": "Описание файла (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "large",
+      "pii_tags": {
+        "ff_inner_name": "id_number"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_object",
+          "on": "ff_parent_object",
+          "to_column": "id"
+        }
+      ]
+    },
+    "ic_application": {
+      "aliases": [],
+      "business_description": "ИУ. Заявка (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "large",
+      "pii_tags": {
+        "credit_logic_id": "credit_data"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "application_obj",
+          "on": "app_obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "scp_arm_manager_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_techcred",
+          "on": "credit_logic_id",
+          "to_column": "id"
+        },
+        {
+          "to": "dict_div_presence",
+          "on": "deleg_region_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_object",
+          "on": "initiator_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "curator_head_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "resp_cond_coord",
+          "to_column": "id"
+        },
+        {
+          "to": "business_segment",
+          "on": "scp_business_segment",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_dict_tech_ctredit",
+          "on": "scp_tech_ctredit",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "emp_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_state",
+          "on": "afp_state_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "mler_application": {
+      "aliases": [],
+      "business_description": "МЮЭР. Заявка (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "large",
+      "pii_tags": {
+        "credit_logic_id": "credit_data"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_state",
+          "on": "afp_state_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_dict_tech_ctredit",
+          "on": "scp_tech_ctredit",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "emp_id",
+          "to_column": "id"
+        },
+        {
+          "to": "dict_div_presence",
+          "on": "deleg_region_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "chief_initiator_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "execut_admin_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_company",
+          "on": "initiator_id",
+          "to_column": "id"
+        },
+        {
+          "to": "dict_product",
+          "on": "app_product_id",
+          "to_column": "id"
+        },
+        {
+          "to": "business_segment",
+          "on": "scp_business_segment",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_techcred",
+          "on": "credit_logic_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "mler_signer_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "scp_cheif_cm_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "ms_0golbfqyrdq4im6jf6ajivwy9": {
+      "aliases": [],
+      "business_description": "ms_0golbfqyrdq4im6jf6ajivwy9 (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "business_segment",
+          "on": "obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_gov_program_dict",
+          "on": "id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "ms_0n8ohjyx7oszo6a47ca9g0s6f": {
+      "aliases": [],
+      "business_description": "MultiSelect container: SCP_STATE_ID_MS. ObjType: КТ. Заявка (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": []
+    },
+    "ms_0oc5mpme8nklimjy77sai9gf1": {
+      "aliases": [],
+      "business_description": "ms_0oc5mpme8nklimjy77sai9gf1 (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "scp_prod_comm_dict",
+          "on": "id",
+          "to_column": "id"
+        },
+        {
+          "to": "dict_product",
+          "on": "obj_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "ms_1fd5jp86pabxu9na4knwphvyr": {
+      "aliases": [],
+      "business_description": "ms_1fd5jp86pabxu9na4knwphvyr (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "dict_product",
+          "on": "obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_gov_program_dict",
+          "on": "id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "ms_333s6j5jn97srp008gyi3zueo": {
+      "aliases": [],
+      "business_description": "ms_333s6j5jn97srp008gyi3zueo (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_state",
+          "on": "obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "mler_application",
+          "on": "id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "ms_39qrctc1n8efr9axiukjssgzl": {
+      "aliases": [],
+      "business_description": "ms_39qrctc1n8efr9axiukjssgzl (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "scp_prod_comm_dict",
+          "on": "id",
+          "to_column": "id"
+        },
+        {
+          "to": "type_loan",
+          "on": "obj_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "ms_64cm5ded37z58x0fyt5lgvhc7": {
+      "aliases": [],
+      "business_description": "MultiSelect container: OFFICE_FIX_MS. ObjType: СКП. Справочник: Офисы РЦБ (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": []
+    },
+    "ms_965j58mgwkpomnuooc29dlq9f": {
+      "aliases": [],
+      "business_description": "ms_965j58mgwkpomnuooc29dlq9f (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "scp_gov_program_dict",
+          "on": "id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_techcred",
+          "on": "obj_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "ms_9k60rv4p0oaf3c702f2l1gj77": {
+      "aliases": [],
+      "business_description": "ms_9k60rv4p0oaf3c702f2l1gj77 (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "scp_dict_tech_ctredit",
+          "on": "obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_gov_program_dict",
+          "on": "id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "ms_d1oakp9uq175ak3dbhpzbu81d": {
+      "aliases": [],
+      "business_description": "ms_d1oakp9uq175ak3dbhpzbu81d (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "application_obj",
+          "on": "id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_state",
+          "on": "obj_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "ms_dlggiqkhqj46rhq1lrgryim7c": {
+      "aliases": [],
+      "business_description": "ms_dlggiqkhqj46rhq1lrgryim7c (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "scp_techcred",
+          "on": "obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "dict_product",
+          "on": "id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "ms_dxsh6488ihf77xmsd43dwby6k": {
+      "aliases": [],
+      "business_description": "ms_dxsh6488ihf77xmsd43dwby6k (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_state",
+          "on": "obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_application",
+          "on": "id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "ms_e5lum3lbateqhx8wkgtstxdf9": {
+      "aliases": [],
+      "business_description": "ms_e5lum3lbateqhx8wkgtstxdf9 (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "scp_dict_tech_ctredit",
+          "on": "obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "dict_product",
+          "on": "id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "offices_psb": {
+      "aliases": [
+        "офисы",
+        "подразделения",
+        "отделения",
+        "филиалы",
+        "departments",
+        "branches",
+        "offices"
+      ],
+      "business_description": "Офисы и подразделения банка, включая иерархию, адреса, коды и признаки активности.",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "offices_psb",
+          "on": "rout_office_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_company",
+          "on": "org_company",
+          "to_column": "id"
+        }
+      ]
+    },
+    "participant_app": {
+      "aliases": [
+        "участники сделки",
+        "участники заявки",
+        "borrowers",
+        "deal participants"
+      ],
+      "business_description": "Участники сделки и связи заявки с заемщиком, сотрудником обращения и базовым объектом заявки.",
+      "cardinality_hint": "large",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_employee",
+          "on": "emp_appeal_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_company",
+          "on": "borrower_id",
+          "to_column": "id"
+        },
+        {
+          "to": "application_obj",
+          "on": "app_obj_person_conn_id",
+          "to_column": "id"
+        },
+        {
+          "to": "application_obj",
+          "on": "app_obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_part_sec_expertise",
+          "on": "particip_sec_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_object",
+          "on": "obj_owner_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "prod_change_params": {
+      "aliases": [],
+      "business_description": "СКП. Изменяемые параметры продукта (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "large",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_object",
+          "on": "link_card_obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "product_pricing",
+          "on": "product_pricing_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "prod_commissions": {
+      "aliases": [],
+      "business_description": "СКП. Комиссии продукта (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_object",
+          "on": "link_card_obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_prod_comm_dict",
+          "on": "prod_comm_dict_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "prod_guarantees": {
+      "aliases": [],
+      "business_description": "СКП. Гарантии продукта (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_object",
+          "on": "link_card_obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_prod_guarant_dict",
+          "on": "prod_guarant_dict_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "product_pricing": {
+      "aliases": [
+        "ценообразование",
+        "ставки продукта",
+        "условия продукта",
+        "pricing"
+      ],
+      "business_description": "Условия ценообразования продукта: ставки, суммы, сублимиты, типы кредита и связь с продуктом.",
+      "cardinality_hint": "large",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "dict_product",
+          "on": "app_product_id",
+          "to_column": "id"
+        },
+        {
+          "to": "product_pricing",
+          "on": "product_pricing_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_object",
+          "on": "owner_object_id",
+          "to_column": "id"
+        },
+        {
+          "to": "type_loan",
+          "on": "type_loan_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_amd_product",
+          "on": "amdp_parent_product_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_amd_product": {
+      "aliases": [],
+      "business_description": "СКП. РУМ. Продукт РУМ (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "large",
+      "pii_tags": {
+        "is_blanc_credit": "credit_data",
+        "exp_limit_credit_rub": "financial_amount"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "dict_product",
+          "on": "app_product_id",
+          "to_column": "id"
+        },
+        {
+          "to": "type_loan",
+          "on": "loan_type_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_project_ans",
+          "on": "test_amd_proj_link",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_decision_quest",
+          "on": "draft_dec_id",
+          "to_column": "id"
+        },
+        {
+          "to": "type_loan",
+          "on": "loan_type_afhd_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_amd_product",
+          "on": "amd_prod_link_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_amd_product",
+          "on": "amdp_parent_product_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_application": {
+      "aliases": [
+        "заявки",
+        "кредитные заявки",
+        "скп заявки",
+        "applications",
+        "loan applications"
+      ],
+      "business_description": "СКП заявки на кредитные продукты, маршрутизацию, состояния, суммы и ответственных сотрудников.",
+      "cardinality_hint": "very_large",
+      "pii_tags": {
+        "credit_logic_id": "credit_logic"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "scp_techcred",
+          "on": "credit_logic_id",
+          "to_column": "id"
+        },
+        {
+          "to": "business_segment",
+          "on": "scp_business_segment",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_dict_tech_ctredit",
+          "on": "scp_tech_ctredit",
+          "to_column": "id"
+        },
+        {
+          "to": "offices_psb",
+          "on": "ca_rout_office_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "resp_cond_coord",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "voting_km_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "emp_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "scp_cheif_cm_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_dict_tech_ctredit",
+          "on": "lending_tech_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "scp_bg_owner_lidm",
+          "to_column": "id"
+        },
+        {
+          "to": "dict_div_presence",
+          "on": "deleg_region_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_company",
+          "on": "initiator_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "curator_head_id",
+          "to_column": "id"
+        },
+        {
+          "to": "fs_file",
+          "on": "interm_file_storage",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "voting_fm_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_state",
+          "on": "auto_check_status",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_state",
+          "on": "afp_state_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "scp_arm_manager_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_collateral_app": {
+      "aliases": [],
+      "business_description": "СКП. Залоговая заявка (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "large",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_employee",
+          "on": "perform_hr_face_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_state",
+          "on": "pledge_concl_state_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "cp_arm_manager_id",
+          "to_column": "id"
+        },
+        {
+          "to": "dict_product",
+          "on": "scp_info_type_prod_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_collateral_app",
+          "on": "cur_upd_appl_id",
+          "to_column": "id"
+        },
+        {
+          "to": "application_obj",
+          "on": "app_obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_company",
+          "on": "scp_info_pledger_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "emp_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_decision_quest",
+          "on": "scp_quest_dec_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "scp_arm_chief_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "ca_exp_emp_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_collateral_app",
+          "on": "parent_collat_app_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_decision_quest": {
+      "aliases": [],
+      "business_description": "СКП. Вопросы на принятие решения (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "large",
+      "pii_tags": {
+        "credit_purpose_id": "credit_data",
+        "est_credit_limit": "financial_amount",
+        "credit_report_class": "credit_data"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "scp_gov_program_dict",
+          "on": "scp_gov_program_id",
+          "to_column": "id"
+        },
+        {
+          "to": "type_loan",
+          "on": "type_loan_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_project_ans",
+          "on": "scp_project_ans_link",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_decision_quest",
+          "on": "scp_dec_quest_id",
+          "to_column": "id"
+        },
+        {
+          "to": "dict_product",
+          "on": "app_product_id",
+          "to_column": "id"
+        },
+        {
+          "to": "type_loan",
+          "on": "loan_type_id",
+          "to_column": "id"
+        },
+        {
+          "to": "fs_file",
+          "on": "sys_file_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_amd_product",
+          "on": "amdp_parent_product_id",
+          "to_column": "id"
+        },
+        {
+          "to": "application_obj",
+          "on": "app_obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "business_segment",
+          "on": "attr_business_segment",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_state",
+          "on": "scp_state_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_company",
+          "on": "scp_subl_bor",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_dict_product_na": {
+      "aliases": [],
+      "business_description": "СКП. Справочник: Продукт из НА (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "small",
+      "pii_tags": {
+        "credit_product": "credit_data"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "dict_product",
+          "on": "app_product_id",
+          "to_column": "id"
+        },
+        {
+          "to": "yaig_product_dict",
+          "on": "yaig_product_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_dict_rsc_office": {
+      "aliases": [],
+      "business_description": "СКП. Справочник: Офисы РЦБ (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "small",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "offices_psb",
+          "on": "rsc_office_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_dict_tech_ctredit": {
+      "aliases": [],
+      "business_description": "СКП. Справочник: технология кредитования (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "small",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": []
+    },
+    "scp_gov_program_dict": {
+      "aliases": [],
+      "business_description": "СКП. Госпрограмма по вопросу на принятие решения (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "scp_gov_program_dict",
+          "on": "upp_gov_prog_dict_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_part_sec_expertise": {
+      "aliases": [],
+      "business_description": "СКП. Экспертиза СЭБ участника сделки (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "large",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_employee",
+          "on": "sf_sec_rs_emp_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_sec_check_res",
+          "on": "sec_ch_res_list",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "emp_id",
+          "to_column": "id"
+        },
+        {
+          "to": "offices_psb",
+          "on": "psb_office_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_sec_expertise",
+          "on": "sec_expertise_id",
+          "to_column": "id"
+        },
+        {
+          "to": "dict_div_presence",
+          "on": "deleg_region_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_state",
+          "on": "afp_state_id",
+          "to_column": "id"
+        },
+        {
+          "to": "participant_app",
+          "on": "expertise_obj_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_prod_comm_dict": {
+      "aliases": [],
+      "business_description": "СКП. Справочник: комиссии продуктов СКП (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "large",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "scp_gov_program_dict",
+          "on": "scp_gov_program_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_prod_guar_dict": {
+      "aliases": [],
+      "business_description": "СКП. Справочник: гарантии продуктов СКП (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "scp_gov_program_dict",
+          "on": "scp_gov_program_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_prod_guarant_dict",
+          "on": "prod_guarant_dict_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_prod_guarant_dict": {
+      "aliases": [],
+      "business_description": "СКП. Справочник: гарантии продуктов СКП (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": []
+    },
+    "scp_project_ans": {
+      "aliases": [
+        "проекты решений",
+        "решения по заявке",
+        "credit decisions"
+      ],
+      "business_description": "Проекты решений по кредитным заявкам, лимитам, срокам, ответственным сотрудникам и итоговым состояниям.",
+      "cardinality_hint": "large",
+      "pii_tags": {
+        "credit_line_term": "credit_terms",
+        "credit_analyst_id": "employee_id",
+        "is_blanc_credit": "credit_data",
+        "exp_limit_credit_rub": "financial_amount",
+        "credit_group_id": "credit_score"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "scp_amd_product",
+          "on": "amdp_parent_product_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "voting_km_id",
+          "to_column": "id"
+        },
+        {
+          "to": "application_obj",
+          "on": "req_link_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "curator_head_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "credit_analyst_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "voting_rm_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "spec_fa",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "voting_fm_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_company",
+          "on": "scp_subl_bor",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_state",
+          "on": "state_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_state",
+          "on": "scp_state_id",
+          "to_column": "id"
+        },
+        {
+          "to": "type_loan",
+          "on": "loan_type_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "resp_risk_manager_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "scp_bg_owner_lidm",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "scp_chief_ca_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "resp_head_cm_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "refer_empl",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_sec_check_res": {
+      "aliases": [
+        "результаты проверок",
+        "результаты сэб",
+        "security check results"
+      ],
+      "business_description": "Результаты проверок СЭБ, включая комментарии по кредитной истории и связанную экспертизу.",
+      "cardinality_hint": "large",
+      "pii_tags": {
+        "credit_history_comm": "credit_history",
+        "sf_credit_history_comm": "credit_history"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_object",
+          "on": "expertise_obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "emp_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_sec_expertise": {
+      "aliases": [
+        "экспертиза сэб",
+        "проверки сэб",
+        "security expertise"
+      ],
+      "business_description": "Экспертизы службы экономической безопасности по заявкам, офисам, регионам и ответственным сотрудникам.",
+      "cardinality_hint": "large",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_state",
+          "on": "afp_state_id",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_sec_expertise",
+          "on": "sec_exp_copy_id",
+          "to_column": "id"
+        },
+        {
+          "to": "corp_tech_application",
+          "on": "app_obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "deleg_emp_id",
+          "to_column": "id"
+        },
+        {
+          "to": "offices_psb",
+          "on": "psb_office_id",
+          "to_column": "id"
+        },
+        {
+          "to": "application_obj",
+          "on": "expertise_obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "dict_div_presence",
+          "on": "deleg_region_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "reg_resp_emp",
+          "to_column": "id"
+        },
+        {
+          "to": "scp_application",
+          "on": "scp_application_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "emp_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "scp_techcred": {
+      "aliases": [],
+      "business_description": "СКП. Справочники: технология кредитования (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "small",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": []
+    },
+    "sys_algorithm": {
+      "aliases": [],
+      "business_description": "РМ. Алгоритм, SysObjectType{id=118404, name='РМ. Алгоритм', ident='RISK_ALGORITHM'} (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_obj_type",
+          "on": "amy_base_type_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "sys_employee": {
+      "aliases": [
+        "сотрудник",
+        "сотрудники",
+        "сотрудников",
+        "работники",
+        "персонал",
+        "менеджеры",
+        "employees",
+        "managers"
+      ],
+      "business_description": "Сотрудники банка и ответственные менеджеры. Содержит ФИО, email, телефон и связи с офисами.",
+      "cardinality_hint": "large",
+      "pii_tags": {
+        "email": "email",
+        "phone": "phone",
+        "email_confirmed": "email",
+        "phone_confirmed": "phone",
+        "inner_emp_phone": "phone",
+        "first_name": "name",
+        "second_name": "name",
+        "sur_name": "name"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "fs_file",
+          "on": "sys_image",
+          "to_column": "id"
+        },
+        {
+          "to": "offices_psb",
+          "on": "ps_office",
+          "to_column": "id"
+        }
+      ]
+    },
+    "sys_company": {
+      "aliases": [
+        "клиент",
+        "клиенты",
+        "клиентов",
+        "контрагенты",
+        "компании",
+        "заемщики",
+        "customers",
+        "companies"
+      ],
+      "business_description": "Компании и контрагенты клиентов. Содержит ИНН, email, телефон и признаки клиентского сегмента.",
+      "cardinality_hint": "large",
+      "pii_tags": {
+        "inn": "id_number",
+        "attr_email": "email",
+        "contact_phone": "phone"
+      },
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "business_segment",
+          "on": "business_segment",
+          "to_column": "id"
+        },
+        {
+          "to": "offices_psb",
+          "on": "offices_psb_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "sys_obj_resp": {
+      "aliases": [],
+      "business_description": "Ответственные сотрудники, SysObjectType{id=105164, name='Ответственные сотрудники', ident='SYS_OBJ_RESP'} (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_employee",
+          "on": "afe_emp_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_employee",
+          "on": "afe_manage_emp",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_object",
+          "on": "afe_ext_obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_object",
+          "on": "afe_obj_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_obj_resp",
+          "on": "afe_current_resp",
+          "to_column": "id"
+        }
+      ]
+    },
+    "sys_state": {
+      "aliases": [
+        "статусы",
+        "состояния",
+        "states",
+        "statuses"
+      ],
+      "business_description": "Справочник состояний объектов и заявок, используется для фильтрации активных и финальных статусов.",
+      "cardinality_hint": "small",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": []
+    },
+    "tbs_type": {
+      "aliases": [],
+      "business_description": "Тип ОСВ (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "small",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": []
+    },
+    "type_loan": {
+      "aliases": [],
+      "business_description": "Справочник: вид кредита (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "small",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": []
+    },
+    "yaig_client_gen_agr": {
+      "aliases": [],
+      "business_description": "УАиГ. Генеральное соглашение клиента (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "medium",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "sys_company",
+          "on": "yaig_client_link",
+          "to_column": "id"
+        }
+      ]
+    },
+    "yaig_client_guarantee": {
+      "aliases": [],
+      "business_description": "УАиГ. Гарантия клиента (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "large",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": [
+        {
+          "to": "yaig_client_gen_agr",
+          "on": "yaig_prnt_gen_agr_id",
+          "to_column": "id"
+        },
+        {
+          "to": "sys_company",
+          "on": "yaig_client_link",
+          "to_column": "id"
+        },
+        {
+          "to": "yaig_product_dict",
+          "on": "yaig_product_id",
+          "to_column": "id"
+        }
+      ]
+    },
+    "yaig_product_dict": {
+      "aliases": [],
+      "business_description": "Справочник: УАиГ продукт (TODO: уточнить бизнес-владельцем).",
+      "cardinality_hint": "small",
+      "pii_tags": {},
+      "allowed_ops": [
+        "SELECT"
+      ],
+      "denied_ops": [],
+      "approved_join_keys": []
+    }
+  }
+}
