@@ -2,10 +2,16 @@ import json
 import os
 from pathlib import Path
 
-import psycopg2
 import pytest
 
-from app import rag_adapter
+psycopg2 = pytest.importorskip("psycopg2")
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("BENCHMARK_DSN") and not os.environ.get("RUN_BENCHMARK_TESTS"),
+    reason="Тесты требуют benchmark Postgres; задайте BENCHMARK_DSN или RUN_BENCHMARK_TESTS=1.",
+)
+
+from app import rag_adapter  # noqa: E402
 
 
 GT_PATH = Path(__file__).parent / "fixtures" / "table_knowledge_v2_gt.json"
