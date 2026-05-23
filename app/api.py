@@ -32,6 +32,11 @@ async def _lifespan(app):  # type: ignore[no-untyped-def]
     """
     try:
         from app import analysis_job_supervisor, judge_job_supervisor, oracle_job_supervisor
+    except ImportError:
+        yield
+        return
+
+    try:
         totals = []
         for module, label in (
             (analysis_job_supervisor, "analysis"),
@@ -60,8 +65,6 @@ from app.pipeline_service import (
     execute_run,
     provider_error_message,
 )
-from app.web_audits import router as audits_router
-from app.web_chat import router as web_router
 
 
 app = FastAPI(
@@ -70,8 +73,20 @@ app = FastAPI(
     description="HTTP-обертка над оркестратором генерации и проверки SQL.",
     lifespan=_lifespan,
 )
-app.include_router(web_router)
-app.include_router(audits_router)
+try:
+    from app.web_chat import router as web_router
+except ImportError:
+    web_router = None
+
+try:
+    from app.web_audits import router as audits_router
+except ImportError:
+    audits_router = None
+
+if web_router is not None:
+    app.include_router(web_router)
+if audits_router is not None:
+    app.include_router(audits_router)
 
 
 class RunRequest(BaseModel):
