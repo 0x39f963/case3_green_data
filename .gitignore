@@ -1,0 +1,72 @@
+# секреты
+.env
+.env.*
+*.key
+*.pem
+secrets/
+**/credentials*
+
+# python кэши
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.venv/
+venv/
+*.egg-info/
+
+# редактор/ос
+.DS_Store
+.vscode/
+.idea/
+
+# control-plane не публикуем
+.[c]ursor/
+AGENTS.md
+[Cc][Oo][Dd][Ee][Xx].md
+CLAUDE.md
+
+# runtime data
+data/traces/
+data/web_chats/
+data/bot/
+data/eval/reports/
+data/eval/raw/
+data/eval/execution_accuracy/
+data/tmp_traces_ui/
+data/tmp_webchat_ui/
+data/bench/
+
+# деплой и контейнеры
+deploy/docker-compose*.yml
+deploy/Dockerfile*
+deploy/*.sh
+deploy/*.env
+deploy/bot_models.json
+deploy/postgres-init/*
+!deploy/postgres-init/01-schema.sql
+
+# tg-bot и web-chat UI
+app/telegram_bot.py
+app/web_chat.py
+app/templates/web_chat.html
+app/templates/test_report*
+app/static/web/
+app/static/audit_reviews/*.js
+app/static/audit_reviews/*.css
+app/ui_streamlit.py
+app/trace_viewer.py
+app/test_report.py
+scripts/run_test_bot.py
+scripts/smoke_bot.py
+
+# сторонняя инфра / временные артефакты
+benchmark_service/
+scripts/_bench_audit/
+TASK-3/marina-case3-rag/rag_pipeline/indices/
+logs/
+test-results/
+mockups/

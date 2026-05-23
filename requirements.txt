@@ -1,0 +1,58 @@
+# Зависимости верхнего уровня для нашей сборки.
+# Все версии указаны с нижней границей: docker compose build пересчитает их
+# в lock после первого прогона. Мы не зависим от точного патч-релиза.
+
+# RAG-память Марины. Эти пакеты тащит ее код, поэтому версии
+# совпадают с TASK-3/marina-case3-rag/requirements.txt.
+sentence-transformers>=3.0.0
+faiss-cpu>=1.8.0
+numpy>=1.26.0
+
+# B3 STEP4 classifier ML and eval.
+scikit-learn>=1.4
+lightgbm>=4.3
+transformers>=4.40
+pandas>=2.2
+jsonlines>=4.0
+
+# LangChain плюс надстройка для state machine.
+# langgraph дает нам узлы и переходы, через которые крутится цикл генерации
+# и проверки. Если кто-то решит переписать на чистый Python - можно, но
+# тогда придется руками вести iterations_log и состояние.
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+langchain-openai>=0.2.0
+langgraph>=0.2.0
+openai>=1.50.0
+
+# Драйвер PostgreSQL для песочницы EXPLAIN.
+psycopg2-binary>=2.9.0
+
+# Парсеры SQL: pglast как primary PostgreSQL AST, SQLGlot позже для transforms.
+pglast>=6.0
+sqlglot>=25.0
+sqlparse>=0.5.0
+
+# Загрузка переменных окружения для локальной разработки.
+python-dotenv>=1.0.0
+
+# Pydantic для строгих схем входа/выхода у FastAPI.
+pydantic>=2.0.0
+
+# Веб-интерфейс. Streamlit это чат, FastAPI это API и просмотрщик трасс.
+streamlit>=1.38.0
+fastapi>=0.115.0
+uvicorn>=0.30.0
+httpx>=0.27.0
+aiogram>=3.4
+
+# Шаблоны HTML для просмотрщика трасс.
+jinja2>=3.1.0
+
+# Синтетика для скрипта seed_focused.py. Сам скрипт может появиться позже,
+# но пакет нужен заранее, чтобы образ был готов.
+faker>=26.0.0
+
+# Тесты. На MVP их немного, но pytest позволит постепенно дописывать.
+pytest>=8.0.0
