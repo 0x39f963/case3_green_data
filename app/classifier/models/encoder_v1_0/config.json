@@ -1,0 +1,11 @@
+{
+  "architectures": [
+    "ModernBERTForSequenceClassification"
+  ],
+  "base_model": "answerdotai/ModernBERT-base",
+  "dataset": "data/eval/dataset_v1_0.jsonl",
+  "label_count": 37,
+  "mode": "local_tfidf_smoke",
+  "temperature": 1.0,
+  "version": "v1_0"
+}

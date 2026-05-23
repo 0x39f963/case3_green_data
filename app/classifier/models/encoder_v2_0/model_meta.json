@@ -1,0 +1,68 @@
+{
+  "base_model": "intfloat/multilingual-e5-small",
+  "critical_label_metrics": {
+    "DIRECT_SENSITIVE": {
+      "f1": 0.9917355371900827,
+      "precision": 0.9836065573770492,
+      "recall": 1.0,
+      "support": 120
+    },
+    "EXCESSIVE_SCOPE": {
+      "f1": 0.8603603603603602,
+      "precision": 0.9455445544554455,
+      "recall": 0.7892561983471075,
+      "support": 242
+    },
+    "HALLUCINATED_COLUMN": {
+      "f1": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 25
+    },
+    "HALLUCINATED_TABLE": {
+      "f1": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 40
+    },
+    "WRONG_JOIN_PATH": {
+      "f1": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 23
+    }
+  },
+  "critical_labels": [
+    "DIRECT_SENSITIVE",
+    "EXCESSIVE_SCOPE",
+    "WRONG_JOIN_PATH",
+    "HALLUCINATED_TABLE",
+    "HALLUCINATED_COLUMN"
+  ],
+  "dataset": "data/eval/dataset_v1_0.jsonl",
+  "dataset_note": "proxy eval dataset; human golden_v1_0.jsonl was not present in this checkout",
+  "embed_sec": 36.882,
+  "embedding_dim": 384,
+  "head_type": "one_vs_rest_logistic_regression",
+  "label_count": 37,
+  "mode": "production",
+  "rows": {
+    "test": 600,
+    "train": 4134,
+    "valid": 600
+  },
+  "runtime_calibration": "app.classifier.encoder._semantic_calibration clamps obvious SQL signatures before thresholding Stage 3 labels",
+  "runtime_eval_report": "data/eval/reports/encoder_eval_v2_0_golden_20260520_133559.json",
+  "runtime_latency_p95_ms": 14.190540998242795,
+  "seed": 43,
+  "semantic_augmentation_rows": 960,
+  "stage4_skip_rate_proxy": 0.6393700787401575,
+  "test_micro": {
+    "f1": 0.49526627218934904,
+    "precision": 0.37634892086330934,
+    "recall": 0.7240484429065744
+  },
+  "val_dataset": "data/eval/golden_v1_0.jsonl",
+  "val_dataset_note": "golden_v1_0 holdout converted from golden_dataset_v1_1.csv",
+  "version": "v2_0"
+}

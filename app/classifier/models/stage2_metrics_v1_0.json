@@ -1,0 +1,20 @@
+{
+  "artifact_lightgbm": "/home/x39963/web/mipt/case3/app/classifier/models/lightgbm_v1_0.joblib",
+  "artifact_lr": "/home/x39963/web/mipt/case3/app/classifier/models/lr_v1_0.joblib",
+  "dataset": "data/eval/dataset_v1_0.jsonl",
+  "dataset_rows": 3750,
+  "label_count": 37,
+  "lightgbm_valid_micro": {
+    "f1": 1.0,
+    "precision": 1.0,
+    "recall": 1.0
+  },
+  "lr_valid_micro": {
+    "f1": 1.0,
+    "precision": 1.0,
+    "recall": 1.0
+  },
+  "train_rows": 2642,
+  "valid_rows": 532,
+  "version": "v1_0"
+}

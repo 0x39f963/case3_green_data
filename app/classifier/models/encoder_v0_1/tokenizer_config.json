@@ -1,0 +1,4 @@
+{
+  "tokenizer_class": "ModernBERTTokenizerFast",
+  "mode": "local_tfidf_smoke"
+}

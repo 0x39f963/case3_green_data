@@ -1,0 +1,14 @@
+{
+  "artifact_encoder": "/home/x39963/web/mipt/case3/app/classifier/models/encoder_v1_0",
+  "dataset": "data/eval/dataset_v1_0.jsonl",
+  "dataset_rows": 3750,
+  "test_micro": {
+    "f1": 0.998950682056663,
+    "precision": 1.0,
+    "recall": 0.9979035639412998
+  },
+  "test_rows": 576,
+  "train_rows": 2642,
+  "valid_rows": 532,
+  "version": "v1_0"
+}

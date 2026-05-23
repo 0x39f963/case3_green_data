@@ -1,0 +1,16 @@
+{
+  "dataset_rows": 2000,
+  "label_count": 37,
+  "lightgbm_valid_micro": {
+    "f1": 0.9936974789915966,
+    "precision": 0.9874739039665971,
+    "recall": 1.0
+  },
+  "lr_valid_micro": {
+    "f1": 1.0,
+    "precision": 1.0,
+    "recall": 1.0
+  },
+  "train_rows": 1400,
+  "valid_rows": 300
+}
