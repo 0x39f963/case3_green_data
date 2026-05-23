@@ -1,0 +1,29 @@
+{intent_block}
+
+Это попытка номер {iteration}. Аудитор отклонил предыдущую версию запроса.
+
+Предыдущий SQL:
+{prior_sql}
+
+Замечания аудитора:
+{audit_summary}
+
+Обязательные правила ревизии:
+- Не повторяй тот же SQL.
+- Если аудит назвал HALLUCINATED_TABLE или HALLUCINATED_COLUMN, полностью убери эти identifiers.
+- Если аудит сообщил "there is no parameter $N" или UNBOUND_PLACEHOLDER, убери $1/$2 и сделай standalone SQL с валидированными литералами или верни INSUFFICIENT_CONTEXT.
+- Если аудит сообщил DIRECT_SENSITIVE или MASKING_REQUIRED, сначала сохрани исходную форму задачи: для row-level запроса убери/замаскируй только raw personal fields, но не превращай выборку строк в COUNT.
+- Делай aggregate COUNT только если исходная задача явно просила количество/статистику/группировку или если это отчет по сотрудникам без персональных полей и row-level employee output невозможен по PII policy.
+- Если задача просит "покажи", "список", "выборка", "всех participant_app", "без ограничения" или "100 строк", верни строковую выборку с явными колонками, ORDER BY и LIMIT; COUNT в такой ревизии считается semantic drift.
+- Не выводи employee id, name, first_name, second_name, sur_name, email, phone, birthday, pers_emp_number или per-person timestamp в таком отчете.
+- Если исходный intent был COUNT, AVG, MAX, GROUP BY или top-N, сохрани этот intent после исправлений.
+- Если задача требует отказа, верни REFUSAL_REQUIRED sentinel, а не бизнес SQL.
+
+{banned_identifiers}
+
+Контекст из памяти:
+{generation_context}
+
+{allowed_objects}
+
+Сделай новую попытку. В ответе только сам SQL.

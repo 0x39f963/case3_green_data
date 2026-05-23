@@ -1,0 +1,8 @@
+Generated at: 2026-05-19 00:14:36 MSK
+
+Review this compact benchmark trace input.
+
+Return only JSON that matches the required schema.
+
+Compact input:
+{compact_input}

@@ -1,0 +1,20 @@
+{solutions_context}
+
+{intent_block}
+
+Задача аналитика:
+{task}
+
+Контекст из памяти:
+{generation_context}
+
+{allowed_objects}
+
+Перед ответом проверь:
+- SQL использует только разрешенные таблицы и колонки.
+- SQL не содержит `$1/$2` без bindings.
+- Если задача требует отказа, верни REFUSAL_REQUIRED sentinel.
+- Если нужного объекта нет в allowed schema, верни INSUFFICIENT_CONTEXT.
+- Если RAG-пример противоречит allowed schema, не копируй его.
+
+Напиши один SQL-запрос, который решает задачу. В ответе только SQL.

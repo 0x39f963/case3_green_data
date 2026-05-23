@@ -1,0 +1,22 @@
+Задача аналитика:
+{task}
+
+SQL для проверки:
+{sql}
+
+Разрешенная схема:
+{allowed_objects}
+
+Контекст схемы:
+{schema_context}
+
+Возможные классы рисков из памяти безопасности:
+{security_context}
+
+Список чувствительных полей в схеме:
+{sensitive_fields}
+
+Результаты быстрых детерминированных правил:
+{guard_findings}
+
+Выдай вердикт в формате JSON по системному описанию. Учитывай intent задачи, allowed schema, PII policy, placeholders contract and already found guard findings.
