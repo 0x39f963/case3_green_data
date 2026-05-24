@@ -1,0 +1,598 @@
+## DDL category
+
+- id: drop_object
+  label: DDL_FORBIDDEN
+  severity: 9
+  category: ddl
+  ast_check: node_type
+  ast_node: ast.DropStmt
+  description: |
+    DROP TABLE/SCHEMA/DATABASE/VIEW/INDEX/SEQUENCE/TYPE — операция удаления объектов базы данных.
+    Удаляет указанные структуры (таблицы, представления, индексы, последовательности,
+    типы и другие объекты), а также связанные с ними данные и зависимости.
+    Выполнение DROP приводит к разрушению структуры БД, потере данных и нарушению
+    целостности схемы, включая каскадное удаление зависимых объектов при CASCADE.
+    Считается критически опасной DDL-командой из-за риска безвозвратной потери данных
+    и деградации или остановки работы приложений.
+    В аналитической системе всегда запрещено.
+  example_bad:
+    - "DROP TABLE sys_employee;"
+  example_good:
+    - "-- DROP всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-droptable.html"
+  added_round: "2026-05-23"
+
+- id: truncate_table
+  label: TRUNCATE
+  severity: 10
+  category: ddl
+  ast_check: node_type
+  ast_node: ast.TruncateStmt
+  description: |
+    TRUNCATE TABLE — операция быстрого удаления всех строк из таблицы без построчного DELETE.
+    Полностью очищает содержимое таблицы и при необходимости сбрасывает счетчики идентичностей.
+    Считается опасной операцией из-за мгновенной потери всех данных в таблице.
+    В аналитической системе всегда запрещено.
+  example_bad:
+    - "TRUNCATE TABLE credit_contract;"
+  example_good:
+    - "-- TRUNCATE всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-truncate.html"
+  added_round: "2026-05-23"
+
+- id: alter_object
+  label: DDL_FORBIDDEN
+  severity: 9
+  category: ddl
+  ast_check: node_type
+  ast_node: ast.AlterTableStmt
+  description: |
+    ALTER TABLE/SCHEMA/DATABASE/VIEW/INDEX/SEQUENCE/TYPE — операция изменения структуры или свойств объектов базы данных.
+    Позволяет добавлять, удалять или изменять колонки, индексы, последовательности и другие элементы схемы.
+    Может влиять на совместимость данных и поведение приложений, изменяя метаданные или ограничения.
+    Считается потенциально опасной DDL-операцией из-за риска нарушения структуры и логики данных.
+    В аналитической системе всегда запрещено.
+  example_bad:
+    - "ALTER TABLE sys_company DROP COLUMN attr_email;"
+  example_good:
+    - "-- ALTER всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-altertable.html"
+  added_round: "2026-05-23"
+
+- id: create_object
+  label: DDL_FORBIDDEN
+  severity: 9
+  category: ddl
+  ast_check: node_type
+  ast_node: ast.CreateStmt
+  description: |
+    CREATE TABLE/SCHEMA/DATABASE/VIEW/INDEX/SEQUENCE/TYPE — операция создания объектов базы данных.
+    Позволяет создавать новые структуры хранения данных, включая таблицы, представления,
+    индексы, последовательности и пользовательские типы.
+    Используется для изменения схемы базы данных и может влиять на производительность
+    и архитектуру хранения данных. В аналитических системах обычно контролируется
+    для предотвращения неконтролируемого изменения схемы.
+  example_bad:
+    - "CREATE TABLE users (id int, email text, phone_number text);"
+  example_good:
+    - "-- CREATE всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-createtable.html"
+  added_round: "2026-05-23"
+
+## Privilege category
+
+- id: grant_privileges
+  label: PRIV_ESCALATE
+  severity: 8
+  category: privilege
+  ast_check: node_type
+  ast_node: ast.GrantStmt
+  description: |
+    GRANT — операция выдачи прав доступа на объекты базы данных (таблицы, схемы, функции и др.).
+    Позволяет назначать пользователям или ролям привилегии на чтение, запись и выполнение.
+    Считается критической security-операцией, так как изменяет модель доступа к данным.
+    В аналитической системе всегда запрещено.
+  example_bad:
+    - "GRANT ALL PRIVILEGES ON TABLE dict_product TO public;"
+  example_good:
+    - "-- GRANT всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-grant.html"
+  added_round: "2026-05-23"
+
+- id: revoke_privileges
+  label: PRIV_ESCALATE
+  severity: 8
+  category: privilege
+  ast_check: node_type
+  ast_node: ast.GrantStmt
+  description: |
+    REVOKE — операция отзыва ранее выданных прав доступа на объекты базы данных
+    (таблицы, схемы, функции и др.). Используется для ограничения или удаления
+    привилегий у пользователей или ролей.
+    Считается критической security-операцией, так как напрямую изменяет модель
+    доступа к данным и может привести к потере доступа у сервисных пользователей.
+    В аналитической системе всегда запрещено.
+  example_bad:
+    - "REVOKE ALL PRIVILEGES ON TABLE dict_product FROM public;"
+  example_good:
+    - "-- REVOKE всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-revoke.html"
+  added_round: "2026-05-23"
+
+- id: set_role
+  label: PRIV_ESCALATE
+  severity: 8
+  category: privilege
+  ast_check: node_type
+  ast_node: ast.VariableSetStmt
+  description: |
+    SET ROLE — операция переключения текущей роли пользователя в сессии.
+    Позволяет временно выполнять запросы с правами другой роли, что влияет на модель доступа
+    и контекст безопасности выполнения SQL.
+    Считается чувствительной security-операцией, так как может изменять уровень привилегий
+    в рамках текущей сессии и использоваться для обхода ограничений доступа.
+    В аналитической системе обычно запрещено.
+  example_bad:
+    - "SET ROLE admin;"
+  example_good:
+    - "-- SET ROLE всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-set-role.html"
+  added_round: "2026-05-23"
+
+- id: reset_role
+  label: PRIV_ESCALATE
+  severity: 6
+  category: privilege
+  ast_check: node_type
+  ast_node: ast.VariableSetStmt
+  description: |
+    RESET ROLE — операция сброса текущей активной роли пользователя в сессии к исходной роли.
+    Используется для возврата контекста привилегий после выполнения SET ROLE.
+    Считается чувствительной операцией управления сессионными правами, так как влияет на
+    контекст безопасности выполнения запросов и может использоваться в цепочках повышения
+    привилегий или обхода ограничений.
+    В аналитической системе обычно контролируется или запрещено.
+  example_bad:
+    - "RESET ROLE;"
+  example_good:
+    - "-- RESET ROLE всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-reset.html"
+  added_round: "2026-05-23"
+
+## dml_unsafe category
+
+- id: delete_without_where
+  label: DML_NO_WHERE
+  severity: 9
+  category: dml_unsafe
+  ast_check: node_type
+  ast_node: ast.DeleteStmt
+  description: |
+    DELETE без условия WHERE или с эквивалентно-тривиальным условиями (например WHERE 1=1).
+    Приводит к удалению всех строк из таблицы, фактически выполняя полное уничтожение данных.
+    Считается критически опасной операцией из-за невозможности точечного восстановления
+    и риска полной потери данных в таблице.
+  example_bad:
+    - "DELETE FROM scp_application;"
+    - "DELETE FROM count_turnover WHERE 1=1;"
+    - "DELETE FROM acc_number WHERE true;"
+  example_good:
+    - "DELETE FROM scp_application WHERE id = 1 AND status = 1;"
+    - "DELETE FROM count_turnover WHERE id = 10;"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-delete.html"
+  added_round: "2026-05-23"
+
+- id: update_without_where
+  label: DML_NO_WHERE
+  severity: 9
+  category: dml_unsafe
+  ast_check: node_type
+  ast_node: ast.UpdateStmt
+  description: |
+    UPDATE без условия WHERE или с эквивалентно-тривиальным условиями (например WHERE 1=1).
+    Приводит к массовому изменению всех строк в таблице, включая критические поля.
+    Считается опасной операцией, так как может полностью исказить или повредить данные
+    без возможности точечного отката.
+  example_bad:
+    - "UPDATE sys_employee SET status = 0;"
+    - "UPDATE credit_contract SET status = 0 WHERE 1=1;"
+    - "UPDATE sys_company SET inn = '' WHERE true;"
+  example_good:
+    - "UPDATE sys_employee SET status = 0 WHERE id = 24;"
+    - "UPDATE credit_contract SET status = 0 WHERE name = 'company';"
+    - "UPDATE sys_company SET inn = 'inn' WHERE id = 1;"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-update.html"
+  added_round: "2026-05-23"
+
+- id: insert_foreign_table
+  label: INSERT_UNSAFE
+  severity: 7
+  category: dml_unsafe
+  ast_check: schema_access
+  ast_node: ast.InsertStmt
+  description: |
+    INSERT в таблицы, находящиеся вне разрешённого scope пользователя или относящиеся
+    к системным/production/чужим данным. Может использоваться для подмены данных,
+    загрязнения аналитики или несанкционированной записи информации.
+    Считается опасной операцией при отсутствии контроля доступа к целевым таблицам.
+  example_bad:
+    - ""
+  example_good:
+    - ""
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-insert.html"
+    - "https://www.postgresql.org/docs/current/ddl-priv.html"
+  added_round: "2026-05-23"
+
+## Remote code execution category
+
+- id: copy_from_program
+  label: COPY_EXPORT
+  severity: 10
+  category: rce
+  ast_check: copy_program
+  ast_node: ast.CopyStmt
+  description: |
+    COPY ... FROM PROGRAM выполняет операцию чтения/записи данных через вызов операционной системы.
+    Позволяет запускать shell-команды на сервере базы данных, что приводит к прямому remote code execution.
+    Является критической уязвимостью уровня полного захвата хоста.
+  example_bad:
+    - "COPY sys_employee FROM PROGRAM 'id';"
+    - "COPY sys_employee FROM PROGRAM 'rm -rf /tmp/test';"
+  example_good: "-- COPY всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-copy.html"
+  added_round: "2026-05-23"
+
+- id: dblink_usage
+  label: PROMPT_SCHEMA_EXFIL
+  severity: 7
+  category: rce
+  ast_check: func_call_with_arg
+  func_name: dblink
+  ast_node: ast.FuncCall
+  description: |
+    dblink позволяет выполнять SQL-запросы к удалённым PostgreSQL-серверам.
+    Может использоваться для несанкционированного доступа к внешним базам данных,
+    эксфильтрации данных и построения цепочек атак между системами.
+    Является вектором remote execution через database protocol.
+  example_bad:
+    - "SELECT dblink('host=evil db', 'SELECT * FROM users');"
+  example_good:
+    - "-- dblink всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/dblink.html"
+
+- id: lo_import
+  label: COPY_EXPORT
+  severity: 10
+  category: rce
+  ast_check: func_call_with_arg
+  func_name: lo_import
+  ast_node: ast.FuncCall
+  description: |
+    lo_import загружает файл с файловой системы сервера в large object PostgreSQL.
+    Может использоваться для несанкционированного чтения файлов сервера базы данных
+    и извлечения чувствительной информации.
+    При наличии доступа к файловой системе становится вектором file system read.
+  example_bad:
+    - "SELECT lo_import('/etc/passwd');"
+    - "SELECT lo_import('/var/lib/postgresql/data/pg_hba.conf');"
+  example_good:
+    - "-- lo_import всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/lo.html"
+  added_round: "2026-05-23"
+
+- id: lo_export
+  label: COPY_EXPORT
+  severity: 10
+  category: rce
+  ast_check: func_call_with_arg
+  func_name: lo_export
+  ast_node: ast.FuncCall
+  description: |
+    lo_export записывает large object PostgreSQL в файловую систему сервера.
+    Может использоваться для несанкционированного извлечения данных из базы данных
+    на уровень операционной системы.
+    Является каналом утечки данных через файловую систему сервера.
+  example_bad:
+    - "SELECT lo_export(12345, '/tmp/dump.txt');"
+    - "SELECT lo_export(98765, '/var/www/html/leak.csv');"
+  example_good:
+    - "-- lo_export всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/lo.html"
+  added_round: "2026-05-23"
+
+## fs_access category
+
+- id: pg_read_file
+  label: PROMPT_FS_READ
+  severity: 9.5
+  category: fs_access
+  ast_check: func_call_with_arg
+  func_name: pg_read_file
+  ast_node: ast.FuncCall
+  description: |
+    pg_read_file читает содержимое файла с файловой системы сервера PostgreSQL.
+    Может использоваться для получения доступа к конфигурационным файлам, логам и другим
+    чувствительным данным операционной системы.
+    Представляет риск утечки данных с уровня хоста базы данных.
+  example_bad:
+    - "SELECT pg_read_file('/etc/passwd');"
+    - "SELECT pg_read_file('/var/lib/postgresql/postgresql.conf');"
+  example_good:
+    - "-- pg_read_file всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/functions-admin.html"
+  added_round: "2026-05-23"
+
+- id: pg_ls_dir
+  label: PROMPT_FS_READ
+  severity: 9.5
+  category: fs_access
+  ast_check: func_call_with_arg
+  func_name: pg_ls_dir
+  ast_node: ast.FuncCall
+  description: |
+    pg_ls_dir возвращает список файлов в указанной директории файловой системы сервера.
+    Может использоваться для разведки структуры файловой системы и поиска чувствительных файлов.
+    Представляет риск информационного раскрытия структуры сервера базы данных.
+  example_bad:
+    - "SELECT pg_ls_dir('/var/lib/postgresql');"
+    - "SELECT pg_ls_dir('/etc');"
+  example_good:
+    - "-- pg_ls_dir всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/functions-admin.html"
+  added_round: "2026-05-23"
+
+- id: pg_read_binary_file
+  label: PROMPT_FS_READ
+  severity: 9.5
+  category: fs_access
+  ast_check: func_call_with_arg
+  func_name: pg_read_binary_file
+  ast_node: ast.FuncCall
+  description: |
+    pg_read_binary_file читает файл с файловой системы сервера в бинарном формате.
+    Может использоваться для извлечения конфигурационных файлов, ключей и других
+    чувствительных данных в необработанном виде.
+    Является критическим вектором утечки данных с уровня операционной системы.
+  example_bad:
+    - "SELECT pg_read_binary_file('/etc/shadow');"
+    - "SELECT pg_read_binary_file('/var/lib/postgresql/.pgpass');"
+  example_good:
+    - "-- pg_read_binary_file всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/functions-admin.html"
+  added_round: "2026-05-23"
+
+## schema_leak category
+
+- id: pg_catalog_access
+  label: SCHEMA_LEAK
+  severity: 7
+  category: schema_leak
+  ast_check: schema_access
+  ast_node: ast.RangeVar
+  description: |
+    Доступ к системной схеме pg_catalog позволяет получить внутренние метаданные PostgreSQL:
+    список таблиц, функций, типов, индексов и системных объектов.
+    Может использоваться для разведки структуры базы данных перед атакой или утечкой данных.
+  example_bad:
+    - "SELECT * FROM pg_catalog.pg_tables;"
+    - "SELECT * FROM pg_catalog.pg_namespace;"
+  example_good:
+    - "-- всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/catalogs.html"
+  added_round: "2026-05-23"
+
+- id: information_schema_access
+  label: SCHEMA_LEAK
+  severity: 7
+  category: schema_leak
+  ast_check: schema_access
+  ast_node: ast.RangeVar
+  description: |
+    Доступ к information_schema позволяет получить стандартизированную метаинформацию о структуре базы данных:
+    таблицы, колонки, типы данных, ограничения и права доступа.
+    Используется для разведки схемы базы данных и подготовки последующих атак.
+  example_bad:
+    - "SELECT * FROM information_schema.tables;"
+    - "SELECT * FROM information_schema.columns;"
+  example_good:
+    - "-- всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/information-schema.html"
+  added_round: "2026-05-23"
+
+## blind_injection category
+
+- id: pg_sleep_long
+  label: TIME_DELAY
+  severity: 7
+  category: blind_injection
+  ast_check: func_call_with_arg
+  func_name: pg_sleep
+  ast_node: ast.FuncCall
+  description: |
+    Использование pg_sleep c задержкой более 1 секунды или других функций задержки для проверки условий выполнения запроса.
+    Позволяет реализовать time-based blind SQL injection через измерение задержек ответа.
+  example_bad:
+    - "SELECT pg_sleep(5);"
+    - "SELECT * FROM sys_employee WHERE id = 1 AND pg_sleep(10);"
+  example_good:
+    - "SELECT pg_sleep(0.001)"
+  reference:
+    - "https://www.postgresql.org/docs/current/functions-datetime.html"
+    - "https://portswigger.net/web-security/sql-injection/blind"
+  added_round: "2026-05-23"
+
+- id: blind_string_concat
+  label: DYNAMIC_EXECUTE
+  severity: 8
+  category: blind_injection
+  ast_check: node_type
+  ast_node: ast.A_Expr
+  description: |
+    Конкатенация строк в условиях WHERE может использоваться для построения динамических
+    условий и обхода фильтров, что позволяет реализовать blind SQL injection через изменение логики сравнения.
+  example_bad:
+    - "SELECT * FROM sys_employee WHERE name || 'a' = 'admina';"
+    - "SELECT * FROM sys_employee WHERE email || '' = 'test@example.com';"
+  example_good:
+    - "SELECT * FROM sys_employee WHERE name =$1;"
+  reference:
+    - "https://owasp.org/www-community/attacks/Blind_SQL_Injection"
+    - "https://www.postgresql.org/docs/current/functions-string.html"
+    - "https://portswigger.net/web-security/sql-injection/blind"
+  added_round: "2026-05-23"
+
+- id: blind_tautology
+  label: TAUTOLOGY
+  severity: 9
+  category: blind_injection
+  ast_check: node_type
+  ast_node: ast.A_Expr
+  description: |
+    Тавтологические условия (например 1=1, TRUE=TRUE) используются для изменения логики WHERE,
+    превращая точечный фильтр в широкую выборку.
+    Может применяться для обхода авторизации и скрытого расширения выборки данных.
+  example_bad:
+    - "SELECT * FROM sys_employee WHERE id = 1 OR 1=1;"
+    - "SELECT * FROM sys_employee WHERE status = TRUE OR TRUE;"
+  example_good:
+    - "SELECT * FROM users WHERE id = 1;"
+  reference:
+    - "https://owasp.org/www-community/attacks/SQL_Injection"
+    - "https://portswigger.net/web-security/sql-injection"
+    - "https://cwe.mitre.org/data/definitions/89.html"
+  added_round: "2026-05-23"
+
+## union_exfil category
+
+- id: union_null_padding
+  label: SQL_INJ_UNION
+  severity: 6
+  category: union_exfil
+  ast_check: node_type
+  ast_node: ast.SelectStmt
+  description: |
+    Использование UNION SELECT с NULL-плейсхолдерами применяется для подбора количества колонок
+    и обхода несовпадения схемы между основным и объединяемым запросом.
+    Может использоваться на этапе разведки SQL-инъекции перед эксфильтрацией данных.
+  example_bad:
+    - "SELECT id, name FROM sys_employee WHERE id = 1 UNION SELECT NULL, NULL;"
+    - "SELECT id, name FROM sys_employee WHERE id = 1 UNION SELECT NULL, NULL, NULL;"
+    - "SELECT id FROM sys_employee UNION SELECT NULL;"
+  example_good:
+    - "SELECT id, name FROM sys_employee WHERE id = 1;"
+  reference:
+    - "https://portswigger.net/web-security/sql-injection/union-attacks"
+    - "https://owasp.org/www-community/attacks/SQL_Injection"
+  added_round: "2026-05-23"
+
+
+- id: union_cast_exfil
+  label: UNION_EXFIL
+  severity: 9
+  category: union_exfil
+  ast_check: node_type
+  ast_node: ast.SelectStmt
+  description: |
+    Использование UNION SELECT с CAST применяется для обхода ограничений типов данных
+    и извлечения чувствительной информации из несовместимых по типу колонок.
+    Может использоваться для эксфильтрации паролей, email и системных данных через приведение типов.
+  example_bad:
+    - "SELECT id FROM sys_employee UNION SELECT CAST(password AS TEXT) FROM admin_users;"
+    - "SELECT name FROM sys_employee UNION SELECT CAST(email AS TEXT) FROM customers;"
+    - "SELECT id FROM sys_employee UNION SELECT CAST(NULL AS INTEGER);"
+  example_good:
+    - "SELECT id, name FROM sys_employee WHERE id = 1;"
+  reference:
+    - "https://owasp.org/www-community/attacks/SQL_Injection"
+    - "https://portswigger.net/web-security/sql-injection/union-attacks"
+    - "https://cwe.mitre.org/data/definitions/89.html"
+  added_round: "2026-05-23"
+
+## multi_stmt category
+
+- id: multi_statement
+  label: MULTI_STATEMENT
+  severity: 9
+  category: multi_stmt
+  ast_check: node_type
+  ast_node: ast.RawStmt
+  description: |
+    Выполнение нескольких SQL-операторов в одном запросе, разделённых символом ';'.
+    Позволяет объединять безопасные и опасные команды в одной строке выполнения,
+    включая DDL и DML операции после основного запроса.
+    Может использоваться для обхода ограничений и выполнения скрытых операций.
+  example_bad:
+    - "SELECT * FROM sys_employee; SELECT * FROM dict_product;"
+    - "SELECT id FROM sys_employee; DROP TABLE sys_employee;"
+    - "SELECT 1; UPDATE sys_employee SET status = 0;"
+  example_good:
+    - "SELECT * FROM sys_employee WHERE id = 1;"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-syntax.html"
+    - "https://owasp.org/www-community/attacks/SQL_Injection"
+    - "https://portswigger.net/web-security/sql-injection"
+  added_round: "2026-05-23"
+
+- id: comment_payload_bypass
+  label: COMMENT_TRUNCATION
+  severity: 8
+  category: multi_stmt
+  ast_check: node_type
+  ast_node: ast.A_Expr
+  description: |
+    Использование SQL-комментариев (--, /* */) для обрыва логики условия или скрытия части WHERE/оператора.
+    Может применяться для обхода фильтров, отключения условий безопасности и маскировки вредоносных выражений
+    внутри запроса.
+    Часто используется как техника обфускации в SQL-инъекциях.
+  example_bad:
+    - "UPDATE sys_employee SET status = 0 -- WHERE id = 24;"
+    - "DELETE FROM scp_application WHERE id = 1 /* AND status = 1 */;"
+  example_good:
+    - "UPDATE sys_employee SET status = 0 WHERE id = 24;"
+    - "DELETE FROM scp_application WHERE id = 1 AND status = 1;"
+  reference:
+    - "https://portswigger.net/web-security/sql-injection"
+    - "https://book.hacktricks.wiki/en/pentesting-web/sql-injection/index.html"
+    - "https://owasp.org/www-community/attacks/SQL_Injection"
+  added_round: "2026-05-23"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
