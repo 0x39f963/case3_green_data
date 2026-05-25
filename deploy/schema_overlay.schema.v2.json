@@ -1,0 +1,122 @@
+{
+  "$comment": "Generated at: 2026-05-24 18:55:56 MSK",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Case 3 schema overlay v2",
+  "type": "object",
+  "required": ["version", "generated_at", "global", "tables"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "global": {
+      "type": "object",
+      "required": ["default_allowed_ops", "default_denied_ops"],
+      "additionalProperties": false,
+      "properties": {
+        "default_allowed_ops": {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1
+        },
+        "default_denied_ops": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "tables": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "aliases",
+          "business_description",
+          "cardinality_hint",
+          "pii_tags",
+          "allowed_ops",
+          "denied_ops",
+          "approved_join_keys",
+          "columns"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1
+          },
+          "business_description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cardinality_hint": {
+            "type": "string",
+            "enum": ["small", "medium", "large", "very_large", "unknown"]
+          },
+          "pii_tags": {
+            "type": "object",
+            "additionalProperties": {"type": "string"}
+          },
+          "allowed_ops": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1
+          },
+          "denied_ops": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "approved_join_keys": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["to", "on"],
+              "additionalProperties": false,
+              "properties": {
+                "to": {"type": "string"},
+                "on": {"type": "string"},
+                "to_column": {"type": "string"}
+              }
+            }
+          },
+          "columns": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "object",
+              "required": ["description", "category", "aliases", "nl_phrases"],
+              "additionalProperties": false,
+              "properties": {
+                "description": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "category": {
+                  "type": "string",
+                  "enum": ["key", "descriptor", "filter", "aggregate", "status", "system", "pii"]
+                },
+                "aliases": {
+                  "type": "array",
+                  "items": {"type": "string"},
+                  "minItems": 1
+                },
+                "nl_phrases": {
+                  "type": "array",
+                  "items": {"type": "string"},
+                  "minItems": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
