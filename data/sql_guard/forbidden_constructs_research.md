@@ -1,100 +1,248 @@
-Generated at: 2026-05-25 10:10:29 MSK
+# Исследование и таксономия SQL Guard
 
-# Forbidden Constructs Research Note
+## 1. Общий обзор
 
-## Scope
+Этот документ описывает таксономию правил SQL Guard — детерминированного слоя безопасности SQL-запросов,
+который работает **до LLM и до RAG**, только на основе AST и строкового анализа.
 
-- Artifact: `data/sql_guard/forbidden_constructs.yaml`.
-- Goal: make the catalog usable for future partial runtime integration without wiring it into `app/sql_guard.py` now.
-- Rule count is preserved: 27 rules.
-- Labels, severity values and categories are preserved.
+Цели:
+- блокировка SQL-инъекций
+- защита от утечек данных
+- запрет опасных PostgreSQL-конструкций
+- контроль привилегий
+- защита от перегрузки базы (DoS на уровне SQL)
 
-## Runtime Groups
+---
 
-| Group | Meaning | Count | Use |
-|---|---|---:|---|
-| `runtime_mvp` | deterministic rule with low false positive risk | 20 | first runtime candidate set |
-| `eval_or_review` | useful security signal, but needs more context before live blocking | 6 | auditor/reviewer/eval hint |
-| `deferred` | technically useful, but blocker policy is not stable enough | 1 | keep out of runtime MVP |
+## 2. Основные источники
 
-## MVP Runtime Rules
+### OWASP SQL Injection Cheat Sheet
+https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html
 
-| id | Why included |
-|---|---|
-| `drop_object` | DDL object deletion is destructive and AST-deterministic. |
-| `truncate_table` | Full table wipe is destructive and AST-deterministic. |
-| `alter_object` | Schema mutation is outside generated analytics SQL. |
-| `create_object` | Schema creation is outside generated analytics SQL. |
-| `grant_privileges` | Privilege mutation is outside generated analytics SQL. |
-| `revoke_privileges` | Privilege mutation is outside generated analytics SQL. |
-| `set_role` | Role switching is a privilege-context change. |
-| `reset_role` | Role reset can be part of role-bypass chains. |
-| `delete_without_where` | DELETE without WHERE or with tautology has direct data-loss risk. |
-| `update_without_where` | UPDATE without WHERE or with tautology has direct data-corruption risk. |
-| `insert_foreign_table` | MVP maps this to select-only mode: any INSERT is unsafe for generated SQL. |
-| `copy_from_program` | COPY PROGRAM is explicit OS command execution. |
-| `dblink_usage` | Remote DB call is outside the analytics contract. |
-| `lo_import` | Server file import is file-system access. |
-| `lo_export` | Server file export is file-system access. |
-| `pg_read_file` | Direct server file read. |
-| `pg_ls_dir` | Server directory enumeration. |
-| `pg_read_binary_file` | Direct binary server file read. |
-| `pg_sleep_long` | Time delay above 1 second has no analytics value. |
-| `multi_statement` | More than one statement can hide a second operation. |
+### CWE-89: SQL Injection
+https://cwe.mitre.org/data/definitions/89.html
 
-## Review Or Eval Only
+### PortSwigger Web Security Academy (SQL Injection)
+https://portswigger.net/web-security/sql-injection
 
-| id | Why not live-blocked in MVP |
-|---|---|
-| `pg_catalog_access` | Can false-positive on explicit schema-introspection tasks. |
-| `information_schema_access` | Can false-positive on explicit schema-introspection tasks. |
-| `blind_string_concat` | String concatenation in filters can be legitimate. |
-| `blind_tautology` | Needs precise AST context to avoid broad literal false positives. |
-| `union_null_padding` | UNION with NULL padding can be legitimate reporting SQL. |
-| `union_cast_exfil` | Needs table and sensitivity context before blocking. |
+### HackTricks PostgreSQL Injection
+https://book.hacktricks.xyz/pentesting-web/sql-injection/postgresql-injection
 
-## Deferred
+### sqlmap (реальные техники атак)
+https://github.com/sqlmapproject/sqlmap
 
-| id | Reason |
-|---|---|
-| `comment_payload_bypass` | Raw comment regex can flag harmless comments; policy must first decide whether generated SQL may contain comments at all. |
+### PostgreSQL официальная документация
+https://www.postgresql.org/docs/
 
-## Validator Criteria
+### MITRE ATT&CK
+- https://attack.mitre.org/techniques/T1190/
+- https://attack.mitre.org/techniques/T1505/001/
 
-- YAML root is a list.
-- Rule count is 27 unless an explicit migration changes it.
-- `id` values are unique.
-- Required fields are present and non-empty: `id`, `label`, `severity`, `category`, `ast_check`, `runtime_mvp`, `runtime_group`, `runtime_reason`, `description`, `example_bad`, `example_good`, `reference`, `added_round`.
-- `runtime_mvp` is boolean.
-- `runtime_group` is one of `runtime_mvp`, `eval_or_review`, `deferred`.
-- `runtime_mvp=true` must use `runtime_group=runtime_mvp`.
-- `example_bad`, `example_good` and `reference` are non-empty lists of non-empty strings.
-- `label`, `category` and `ast_check` belong to known allow-lists.
-- Function checks must provide `func_name`; threshold checks must provide `arg_threshold_seconds`; schema checks must provide `schema_name`.
+---
 
-## Positive Examples
+## 3. Карта правил по категориям
 
-| # | SQL | Expected rule |
-|---:|---|---|
-| 1 | `DROP TABLE sys_employee;` | `drop_object` |
-| 2 | `UPDATE credit_contract SET status = 0 WHERE 1=1;` | `update_without_where` |
-| 3 | `COPY sys_employee FROM PROGRAM 'id';` | `copy_from_program` |
-| 4 | `SELECT pg_read_file('/etc/passwd');` | `pg_read_file` |
-| 5 | `SELECT id FROM sys_employee; DROP TABLE sys_employee;` | `multi_statement` |
+---
 
-## Negative Examples
+## 3.1 Инъекции и blind-инъекции
 
-| # | SQL | Should not trigger |
-|---:|---|---|
-| 1 | `SELECT id, name FROM sys_employee LIMIT 20;` | DDL, privilege, RCE, FS, multi-statement |
-| 2 | `SELECT COUNT(*) AS contract_count FROM credit_contract;` | `truncate_table` |
-| 3 | `UPDATE sys_employee SET status = 0 WHERE id = 24;` | `update_without_where` |
-| 4 | `DELETE FROM scp_application WHERE id = 1 AND status = 1;` | `delete_without_where` |
-| 5 | `SELECT pg_sleep(0.001);` | `pg_sleep_long` |
+### blind_inj
+Источники:
+- OWASP SQL Injection
+- PortSwigger Blind SQL Injection
+- sqlmap time-based техники
 
-## Deferred Integration Notes
+Сюда входят:
+- OR 1=1
+- TRUE = TRUE
+- тавтологии
 
-- Do not wire this catalog into `app/sql_guard.py` in this quality branch.
-- Integration branch should implement only the `runtime_mvp` subset first.
-- `eval_or_review` rules should be passed to auditor/reviewer as hints until context-aware matching exists.
-- `comment_payload_bypass` needs a separate generated-SQL comment policy before live blocking.
+---
+
+### pg_sleep_long
+Источники:
+- sqlmap time-based SQLi
+- PortSwigger Time-based SQL Injection
+
+PostgreSQL:
+- pg_sleep()
+
+---
+
+### blind_string_concat
+Источники:
+- OWASP SQLi
+- PortSwigger логические атаки через строки
+
+---
+
+### comment_payload_bypass
+Источники:
+- OWASP SQLi (обход через комментарии)
+- sqlmap tamper payloads
+
+---
+
+## 3.2 UNION-эксфильтрация
+
+### union_cast_exfil
+Источники:
+- PortSwigger UNION-based SQLi
+- CWE-89
+- sqlmap UNION атаки
+
+PostgreSQL:
+- CAST()
+
+---
+
+### union_null_padding
+Источники:
+- sqlmap выравнивание колонок
+- PortSwigger UNION enumeration
+
+---
+
+## 3.3 Утечка структуры базы
+
+### information_schema_access
+Источники:
+- OWASP reconnaissance этап SQLi
+- PostgreSQL information_schema
+
+---
+
+### pg_catalog_access
+Источники:
+- PostgreSQL системный каталог
+
+---
+
+## 3.4 Доступ к файловой системе PostgreSQL
+
+### pg_read_file / pg_read_binary_file / pg_ls_dir
+Источники:
+- PostgreSQL документация (server file access)
+- HackTricks PostgreSQL exploitation
+
+---
+
+## 3.5 RCE (удалённое выполнение кода)
+
+### copy_from_program
+Источники:
+- PostgreSQL COPY ... PROGRAM
+- HackTricks PostgreSQL RCE
+- MITRE ATT&CK T1190
+
+---
+
+### dblink_usage
+Источники:
+- PostgreSQL расширение dblink
+- HackTricks lateral connection abuse
+
+---
+
+### lo_import / lo_export
+Источники:
+- PostgreSQL large object subsystem
+- HackTricks file exfiltration
+
+---
+
+## 3.6 DDL (изменение структуры БД)
+
+### create_object / drop / truncate / alter_*
+Источники:
+- PostgreSQL DDL документация
+- OWASP (риск разрушения данных)
+
+---
+
+## 3.7 DML (опасные операции записи)
+
+### insert_foreign_table
+### update_statement
+### delete_statement
+
+Источники:
+- PostgreSQL DML документация
+- OWASP: нарушение модели доступа
+- модель read-only аналитического контура
+
+---
+
+## 3.8 Привилегии
+
+### set_role / reset_role
+### grant / revoke
+
+Источники:
+- PostgreSQL система ролей
+- OWASP authorization bypass
+
+---
+
+## 3.9 Перегрузка базы (DoS)
+
+### cost_dos
+Источники:
+- PostgreSQL EXPLAIN / cost model
+- PortSwigger heavy query attacks
+
+---
+
+### cross_join_explosion
+Источники:
+- теория реляционных баз данных (декартово произведение)
+- PostgreSQL JOIN документация
+
+---
+
+## 3.10 Multi-statement
+
+### multi_statement
+Источники:
+- OWASP stacked queries
+- sqlmap stacked injection
+
+---
+
+## 4. Что сознательно НЕ блокируем жёстко
+
+### WITH RECURSIVE
+Статус: WARNING
+
+Причина:
+- используется в аналитике (иерархии, графы)
+- может быть легитимным
+
+---
+
+### GROUP BY / ORDER BY / агрегаты
+Статус: разрешено
+
+Причина:
+- базовая аналитическая функциональность
+
+---
+
+## 5. Исследовательская зона (пока не блокируем)
+
+- JIT оптимизация атак
+- манипуляции cost planner
+- обход индексов через планировщик
+- параллельные execution edge cases
+
+---
+
+## 6. Принципы системы
+
+- основной слой: AST (pglast)
+- fallback: regex только для обфускации
+- никаких LLM в enforcement path
+- режим read-only как базовый
+- deterministic rules engine
+
+---

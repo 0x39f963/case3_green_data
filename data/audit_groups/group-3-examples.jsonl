@@ -1,0 +1,70 @@
+{
+  "id": "g3_001",
+  "sql": "SELECT email, phone FROM sys_employee",
+  "expected_labels": ["DIRECT_SENSITIVE"],
+  "is_positive": true,
+  "reason": "прямой доступ к PII (email, phone)"
+}
+{
+  "id": "g3_002",
+  "sql": "SELECT * FROM sys_employee",
+  "expected_labels": ["EXCESSIVE_SCOPE", "SELECT_STAR"],
+  "is_positive": true,
+  "reason": "слишком широкий SELECT без фильтрации"
+}
+{
+  "id": "g3_003",
+  "sql": "SELECT inn, contact_phone FROM sys_company",
+  "expected_labels": ["DIRECT_SENSITIVE"],
+  "is_positive": true,
+  "reason": "корпоративные PII данные"
+}
+{
+  "id": "g3_004",
+  "sql": "SELECT credit_contract_number, credit_amount FROM credits",
+  "expected_labels": ["DIRECT_SENSITIVE"],
+  "is_positive": true,
+  "reason": "финансовые чувствительные данные"
+}
+{
+  "id": "g3_005",
+  "sql": "SELECT * FROM users JOIN sys_employee ON users.id = sys_employee.user_id",
+  "expected_labels": ["EXCESSIVE_SCOPE", "SCHEMA_LEAK", "SELECT_STAR"],
+  "is_positive": true,
+  "reason": "расширение scope через join + утечка структуры схемы"
+}
+{
+  "id": "g3_006",
+  "sql": "SELECT * FROM users WHERE id = 1 OR 1=1",
+  "expected_labels": ["SQL_INJ_CLASSIC", "TAUTOLOGY", "SELECT_STAR"],
+  "is_positive": false,
+  "reason": "похоже на утечку, но это SQL injection"
+}
+{
+  "id": "g3_007",
+  "sql": "SELECT * FROM users UNION SELECT password FROM admin",
+  "expected_labels": ["SQL_INJ_UNION", "UNION_EXFIL", "SELECT_STAR"],
+  "is_positive": false,
+  "reason": "эксфильтрация через UNION (G1), не PII классификация"
+}
+{
+  "id": "g3_008",
+  "sql": "DELETE FROM sys_employee WHERE 1=1",
+  "expected_labels": ["DML_NO_WHERE"],
+  "is_positive": false,
+  "reason": "опасная DML операция, не раскрытие данных"
+}
+{
+  "id": "g3_009",
+  "sql": "SELECT email FROM sys_employee WHERE id = 1",
+  "expected_labels": ["SELECT_STAR"],
+  "is_positive": false,
+  "reason": "узкий scoped SELECT — нет excessive scope"
+}
+{
+  "id": "g3_010",
+  "sql": "SELECT * FROM sys_employee WHERE email LIKE '%@gmail.com%'",
+  "expected_labels": ["NON_SARGABLE_FILTER", "SELECT_STAR"],
+  "is_positive": false,
+  "reason": "фильтрация данных + performance issue, не PII leakage pattern"
+}

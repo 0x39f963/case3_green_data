@@ -20,10 +20,18 @@
     В аналитической системе всегда запрещено.
   example_bad:
     - "DROP TABLE sys_employee;"
+    - "DROP SCHEMA analytics CASCADE;"
+    - "DROP DATABASE production_db;"
+    - "DROP INDEX idx_employee_email;"
+    - "DROP VIEW employee_report;"
   example_good:
     - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-droptable.html"
+    - "https://www.postgresql.org/docs/current/sql-dropschema.html"
+    - "https://www.postgresql.org/docs/current/sql-dropdatabase.html"
+    - "https://www.postgresql.org/docs/current/sql-dropindex.html"
+    - "https://www.postgresql.org/docs/current/sql-dropview.html"
   added_round: "2026-05-23"
 
 - id: truncate_table
@@ -65,10 +73,15 @@
     В аналитической системе всегда запрещено.
   example_bad:
     - "ALTER TABLE sys_company DROP COLUMN attr_email;"
+    - "ALTER TABLE sys_employee ALTER COLUMN status TYPE TEXT;"
+    - "ALTER INDEX idx_employee_email RENAME TO idx_emp_email_old;"
+    - "ALTER SEQUENCE employee_id_seq RESTART WITH 1;"
   example_good:
     - "SELECT id, name FROM sys_company WHERE id = 1;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-altertable.html"
+    - "https://www.postgresql.org/docs/current/sql-alterindex.html"
+    - "https://www.postgresql.org/docs/current/sql-altersequence.html"
   added_round: "2026-05-23"
 
 - id: create_object
@@ -203,17 +216,21 @@
   runtime_group: runtime_mvp
   runtime_reason: "Deterministic DELETE check when WHERE is absent or trivially true; low false positive risk."
   description: |
-    DELETE без условия WHERE или с эквивалентно-тривиальным условиями (например WHERE 1=1).
-    Приводит к удалению всех строк из таблицы, фактически выполняя полное уничтожение данных.
-    Считается критически опасной операцией из-за невозможности точечного восстановления
-    и риска полной потери данных в таблице.
+    DELETE — операция удаления данных из таблиц базы данных.
+    В аналитическом контуре разрешены только read-only запросы, поэтому любые
+    операции удаления данных считаются небезопасными.
+    DELETE приводит к физическому удалению строк, нарушению целостности данных
+    и полной потере информации при массовом выполнении.
+    Особенно опасен DELETE без WHERE или с тривиальными условиями
+    (например WHERE 1=1), так как он удаляет все строки таблицы.
+    В аналитической системе DELETE всегда запрещён.
   example_bad:
     - "DELETE FROM scp_application;"
     - "DELETE FROM count_turnover WHERE 1=1;"
     - "DELETE FROM acc_number WHERE true;"
+    - "DELETE FROM production_payments WHERE payment_id = 1;"
   example_good:
-    - "DELETE FROM scp_application WHERE id = 1 AND status = 1;"
-    - "DELETE FROM count_turnover WHERE id = 10;"
+    - "SELECT id, name FROM scp_application WHERE id = 1 AND status = 1;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-delete.html"
   added_round: "2026-05-23"
@@ -228,18 +245,22 @@
   runtime_group: runtime_mvp
   runtime_reason: "Deterministic UPDATE check when WHERE is absent or trivially true; low false positive risk."
   description: |
-    UPDATE без условия WHERE или с эквивалентно-тривиальным условиями (например WHERE 1=1).
-    Приводит к массовому изменению всех строк в таблице, включая критические поля.
-    Считается опасной операцией, так как может полностью исказить или повредить данные
-    без возможности точечного отката.
+    UPDATE — операция изменения данных в таблицах базы данных.
+    В аналитическом контуре разрешены только read-only запросы, поэтому любые
+    операции обновления данных считаются небезопасными.
+
+    UPDATE может изменять production-данные, повреждать бизнес-критичные поля,
+    нарушать целостность отчётности и приводить к массовому искажению данных.
+    Особенно опасны UPDATE без WHERE или с тривиальными условиями
+    (например WHERE 1=1), так как они затрагивают все строки таблицы.
+    В аналитической системе UPDATE всегда запрещён.
   example_bad:
     - "UPDATE sys_employee SET status = 0;"
     - "UPDATE credit_contract SET status = 0 WHERE 1=1;"
     - "UPDATE sys_company SET inn = '' WHERE true;"
+    - "UPDATE production_payments SET amount = 0 WHERE payment_id = 1;"
   example_good:
-    - "UPDATE sys_employee SET status = 0 WHERE id = 24;"
-    - "UPDATE credit_contract SET status = 0 WHERE name = 'company';"
-    - "UPDATE sys_company SET inn = 'inn' WHERE id = 1;"
+    - "SELECT id, status FROM sys_employee WHERE id = 24;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-update.html"
   added_round: "2026-05-23"
@@ -259,6 +280,10 @@
     поэтому для первого runtime-подключения правило должно блокировать сам InsertStmt.
     Table-specific режим можно добавить позже, когда появится явная модель writable contexts.
   example_bad:
+    - "INSERT INTO sys_employee (id, status) VALUES (1, 'active');"
+    - "INSERT INTO production_payments (id, amount) VALUES (1, 999999);"
+    - "INSERT INTO analytics.monthly_report VALUES (1, 'fake');"
+    - "INSERT INTO public.users (login, role) VALUES ('admin2', 'admin');"
     - "INSERT INTO sys_employee (id, name) VALUES (999, 'test');"
     - "INSERT INTO audit_shadow SELECT * FROM sys_employee;"
   example_good:
@@ -662,16 +687,4 @@
     - "https://book.hacktricks.wiki/en/pentesting-web/sql-injection/index.html"
     - "https://owasp.org/www-community/attacks/SQL_Injection"
   added_round: "2026-05-23"
-
-
-
-
-
-
-
-
-
-
-
-
 
