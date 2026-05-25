@@ -140,6 +140,7 @@
   <div class="meta">
     <div><b>Документ:</b> marina-04 <span class="pill">ТЗ Марины (4 из 4)</span></div>
     <div><b>Файл:</b> <code>data/eval/golden_safe_rewrite_rules.html</code></div>
+    <div><b>Machine map:</b> <code>data/eval/golden_safe_rewrite_rules.machine.json</code> (структурная карта правил для future validators).</div>
     <div><b>Используется в:</b> marina-01 (алгоритмическое сравнение с эталоном), marina-02 (классы маскировки), ksenia-04 (примеры для RAG), будущая разметка Golden до 250+ кейсов.</div>
     <div><b>Опирается на:</b> словарь классов маскировки из marina-02 (<code>_PII_MASK_CLASS</code>), теги <code>pii_tags</code> из <code>deploy/schema_overlay.json</code>.</div>
   </div>
@@ -403,6 +404,206 @@ LIMIT 1000;</code></pre>
     </div>
   </div>
 
+  <h3>6.1. Edge examples для validator-ов</h3>
+  <p>
+    Ниже примеры с явной задачей, bad SQL, good <code>safe_rewrite</code> и ожидаемой проверкой.
+    Они не подключают runtime, а фиксируют contract для будущей integration branch.
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Задача / schema_scope</th>
+        <th>Bad SQL</th>
+        <th>Good safe_rewrite</th>
+        <th>Почему bad не подходит</th>
+        <th>Проверка</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>PII_ALIAS_AS_NOT_MASK</code></td>
+        <td>Контакты активных сотрудников.<br><code>["sys_employee"]</code></td>
+        <td><pre><code>SELECT email AS contact
+FROM sys_employee
+WHERE status = 1
+LIMIT 50;</code></pre></td>
+        <td><pre><code>SELECT md5(email) AS email_hash
+FROM sys_employee
+WHERE status = 1
+LIMIT 50;</code></pre></td>
+        <td><code>AS contact</code> меняет имя, но не маскирует email.</td>
+        <td><code>app/ast_pii_masking.py</code>: <code>DIRECT_SENSITIVE</code></td>
+      </tr>
+      <tr>
+        <td><code>PII_CONCAT_RAW_FIRST_ARG</code></td>
+        <td>Ключ для сверки сотрудников.<br><code>["sys_employee"]</code></td>
+        <td><pre><code>SELECT concat(email, ':active') AS emp_key
+FROM sys_employee
+WHERE status = 1
+LIMIT 50;</code></pre></td>
+        <td><pre><code>SELECT md5(email) AS email_hash
+FROM sys_employee
+WHERE status = 1
+LIMIT 50;</code></pre></td>
+        <td>PII стоит первым аргументом <code>concat</code> и остается сырой.</td>
+        <td><code>app/ast_pii_masking.py</code>: <code>DIRECT_SENSITIVE</code></td>
+      </tr>
+      <tr>
+        <td><code>PII_FORMAT_RAW_FIRST_ARG</code></td>
+        <td>Форматированная метка сотрудника.<br><code>["sys_employee"]</code></td>
+        <td><pre><code>SELECT format(first_name, sur_name) AS person_label
+FROM sys_employee
+WHERE status = 1
+LIMIT 50;</code></pre></td>
+        <td><pre><code>SELECT LEFT(first_name, 1) || '.' AS first_initial,
+       LEFT(sur_name, 1) || '.' AS sur_initial
+FROM sys_employee
+WHERE status = 1
+LIMIT 50;</code></pre></td>
+        <td>PII стоит первым аргументом <code>format</code>; это не masking class <code>partial</code>.</td>
+        <td><code>app/ast_pii_masking.py</code>: <code>DIRECT_SENSITIVE</code></td>
+      </tr>
+      <tr>
+        <td><code>PII_WRONG_MASK_CLASS</code></td>
+        <td>Телефоны сотрудников в безопасном виде.<br><code>["sys_employee"]</code></td>
+        <td><pre><code>SELECT md5(phone) AS phone_hash
+FROM sys_employee
+WHERE status = 1
+LIMIT 50;</code></pre></td>
+        <td><pre><code>SELECT LEFT(phone, 4) || '****' AS phone_masked
+FROM sys_employee
+WHERE status = 1
+LIMIT 50;</code></pre></td>
+        <td>Для <code>phone</code> канонический класс в документе - <code>partial</code>, не <code>hash</code>.</td>
+        <td><code>app/ast_pii_masking.py</code>: <code>MASKING_TYPE_MISMATCH</code> при сравнении candidate vs oracle</td>
+      </tr>
+      <tr>
+        <td><code>LIMIT_NON_LITERAL</code></td>
+        <td>Список активных заявок.<br><code>["corp_tech_application"]</code></td>
+        <td><pre><code>SELECT id, name__ru, create_date
+FROM corp_tech_application
+WHERE status = 1
+ORDER BY create_date DESC
+LIMIT $1;</code></pre></td>
+        <td><pre><code>SELECT id, name__ru, create_date
+FROM corp_tech_application
+WHERE status = 1
+ORDER BY create_date DESC
+LIMIT 100;</code></pre></td>
+        <td>В эталоне нужен стабильный числовой <code>LIMIT</code>, иначе oracle не знает ширину списка.</td>
+        <td>future validator: <code>limit_literal_int</code>; текущий oracle-модуль только извлекает integer limit</td>
+      </tr>
+      <tr>
+        <td><code>LIMIT_MAGIC_VALUE</code></td>
+        <td>Последние договоры клиента.<br><code>["credit_contract"]</code></td>
+        <td><pre><code>SELECT id, credit_start_date, cr_status_id
+FROM credit_contract
+WHERE link_customer_id = $1
+ORDER BY credit_start_date DESC
+LIMIT 17;</code></pre></td>
+        <td><pre><code>SELECT id, credit_start_date, cr_status_id
+FROM credit_contract
+WHERE link_customer_id = $1
+ORDER BY credit_start_date DESC
+LIMIT 20;</code></pre></td>
+        <td><code>LIMIT 17</code> не входит в канонические ступени <code>10/20/50/100/500</code>.</td>
+        <td>future validator: <code>limit_allowed_step</code></td>
+      </tr>
+      <tr>
+        <td><code>LIMIT_AGG_SINGLE_ROW</code></td>
+        <td>Количество активных заявок.<br><code>["scp_application"]</code></td>
+        <td><pre><code>SELECT COUNT(*) AS app_count
+FROM scp_application
+WHERE status = 1
+LIMIT 100;</code></pre></td>
+        <td><pre><code>SELECT COUNT(*) AS app_count
+FROM scp_application
+WHERE status = 1
+LIMIT 1;</code></pre></td>
+        <td>Однострочный агрегат не должен выглядеть как списочная выдача.</td>
+        <td>human/partial: aggregate single-row rule</td>
+      </tr>
+      <tr>
+        <td><code>WHERE_STATUS_SEMANTIC</code></td>
+        <td>Активные заявки.<br><code>["corp_tech_application"]</code></td>
+        <td><pre><code>SELECT id, name__ru, status
+FROM corp_tech_application
+WHERE status = 0
+LIMIT 100;</code></pre></td>
+        <td><pre><code>SELECT id, name__ru, status
+FROM corp_tech_application
+WHERE status = 1
+LIMIT 100;</code></pre></td>
+        <td>Фильтр есть, но смысл задачи изменен: активные записи заменены неактивными.</td>
+        <td>human/partial: semantic review; текущий <code>app/ast_oracle_check.py</code> не имеет <code>ORACLE_WHERE_MISMATCH</code></td>
+      </tr>
+      <tr>
+        <td><code>WHERE_REQUIRED_MISSING</code></td>
+        <td>Мои активные заявки.<br><code>["corp_tech_application"]</code></td>
+        <td><pre><code>SELECT id, name__ru, status
+FROM corp_tech_application
+ORDER BY create_date DESC
+LIMIT 100;</code></pre></td>
+        <td><pre><code>SELECT id, name__ru, status
+FROM corp_tech_application
+WHERE initiator_id = $1 AND status = 1
+ORDER BY create_date DESC
+LIMIT 100;</code></pre></td>
+        <td>Потерян фильтр по пользователю и статусу.</td>
+        <td><code>app/ast_oracle_check.py</code>: <code>ORACLE_WHERE_MISSING</code></td>
+      </tr>
+      <tr>
+        <td><code>WHERE_HARDCODED_ID_DATE</code></td>
+        <td>Мои заявки за 30 дней.<br><code>["corp_tech_application"]</code></td>
+        <td><pre><code>SELECT id, name__ru, create_date
+FROM corp_tech_application
+WHERE initiator_id = 7812
+  AND create_date &gt;= '2026-04-23'
+LIMIT 100;</code></pre></td>
+        <td><pre><code>SELECT id, name__ru, create_date
+FROM corp_tech_application
+WHERE initiator_id = $1
+  AND create_date &gt;= CURRENT_DATE - INTERVAL '30 days'
+LIMIT 100;</code></pre></td>
+        <td>Захардкожены пользовательский id и абсолютная дата, хотя задача параметрическая.</td>
+        <td>partial: literal/id scanner + human review</td>
+      </tr>
+      <tr>
+        <td><code>JOIN_OUT_OF_SCOPE_TABLE</code></td>
+        <td>Заявки по бизнес-сегменту.<br><code>["corp_tech_application", "business_segment"]</code></td>
+        <td><pre><code>SELECT a.id, e.name__ru AS manager_name
+FROM corp_tech_application AS a
+JOIN sys_employee AS e ON e.id = a.emp_id
+WHERE a.status = 1
+LIMIT 100;</code></pre></td>
+        <td><pre><code>SELECT b.name__ru AS segment_name, COUNT(*) AS app_count
+FROM corp_tech_application AS a
+JOIN business_segment AS b ON b.id = a.scp_business_segment
+WHERE a.status = 1
+GROUP BY b.name__ru
+ORDER BY app_count DESC
+LIMIT 20;</code></pre></td>
+        <td><code>sys_employee</code> не входит в <code>schema_scope</code> задачи.</td>
+        <td>future validator: <code>tables_subset_schema_scope</code>; oracle comparison может дать <code>ORACLE_TABLES_MISMATCH</code></td>
+      </tr>
+      <tr>
+        <td><code>JOIN_IMPLICIT_COMMA</code></td>
+        <td>Заявки с названием сегмента.<br><code>["corp_tech_application", "business_segment"]</code></td>
+        <td><pre><code>SELECT a.id, b.name__ru AS segment_name
+FROM corp_tech_application a, business_segment b
+WHERE a.scp_business_segment = b.id
+LIMIT 100;</code></pre></td>
+        <td><pre><code>SELECT a.id, b.name__ru AS segment_name
+FROM corp_tech_application AS a
+JOIN business_segment AS b ON b.id = a.scp_business_segment
+LIMIT 100;</code></pre></td>
+        <td>Comma join усложняет AST-сравнение и маскирует cross join risk.</td>
+        <td>future validator: <code>join_has_on_clause</code></td>
+      </tr>
+    </tbody>
+  </table>
+
   <!-- 7 -->
   <h2>7. Чек-лист разметчика</h2>
   <p>Разметчик пробегает этот список глазами <b>перед сохранением</b> каждого кейса Golden.</p>
@@ -427,7 +628,50 @@ LIMIT 1000;</code></pre>
   </ol>
 
   <!-- 8 -->
-  <h2>8. Применение в LLM-генерации эталонов (опционально)</h2>
+  <h2>8. Machine-check map</h2>
+  <p>
+    Эта таблица разделяет правила на три группы: <code>yes</code> - можно проверить по AST без task context,
+    <code>partial</code> - нужен <code>task</code>, <code>schema_scope</code> или эталон oracle,
+    <code>human</code> - нужен review смысла. Полная структурная версия лежит в
+    <code>data/eval/golden_safe_rewrite_rules.machine.json</code>.
+  </p>
+  <table>
+    <thead><tr><th>Rule</th><th>Machine-checkable</th><th>Check type</th><th>Used by</th><th>Finding / output</th></tr></thead>
+    <tbody>
+      <tr><td><code>SAFE_REWRITE_SELECT_ONLY</code></td><td><code>yes</code></td><td><code>ast_statement_type</code></td><td>future safe_rewrite validator</td><td>reject non-SELECT</td></tr>
+      <tr><td><code>SAFE_REWRITE_NO_SELECT_STAR</code></td><td><code>yes</code></td><td><code>ast_projection_a_star</code></td><td>future safe_rewrite validator / sql guard catalog</td><td><code>SELECT_STAR</code> or validator error</td></tr>
+      <tr><td><code>SAFE_REWRITE_SCHEMA_SCOPE_ONLY</code></td><td><code>partial</code></td><td><code>tables_subset_schema_scope</code></td><td>future safe_rewrite validator</td><td>validator error; candidate comparison can emit <code>ORACLE_TABLES_MISMATCH</code></td></tr>
+      <tr><td><code>SAFE_REWRITE_JOIN_ON_ONLY</code></td><td><code>partial</code></td><td><code>join_has_on_clause</code></td><td>future safe_rewrite validator</td><td>validator error</td></tr>
+      <tr><td><code>SAFE_REWRITE_NO_RAW_PII</code></td><td><code>yes</code></td><td><code>ast_projection_sensitive_column</code></td><td><code>app/ast_pii_masking.py</code></td><td><code>DIRECT_SENSITIVE</code></td></tr>
+      <tr><td><code>SAFE_REWRITE_MASK_CLASS_MATCH</code></td><td><code>yes</code></td><td><code>ast_projection_mask_class</code></td><td><code>app/ast_pii_masking.py</code></td><td><code>MASKING_DOWNGRADED</code>, <code>MASKING_TYPE_MISMATCH</code></td></tr>
+      <tr><td><code>SAFE_REWRITE_LIMIT_REQUIRED</code></td><td><code>partial</code></td><td><code>oracle_limit_presence</code></td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_LIMIT_MISSING</code></td></tr>
+      <tr><td><code>SAFE_REWRITE_LIMIT_NOT_WIDER</code></td><td><code>yes</code></td><td><code>oracle_limit_value_compare</code></td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_LIMIT_TOO_WIDE</code></td></tr>
+      <tr><td><code>SAFE_REWRITE_LIMIT_LITERAL_STEP</code></td><td><code>partial</code></td><td><code>limit_literal_int_allowed_step</code></td><td>future safe_rewrite validator</td><td>validator error</td></tr>
+      <tr><td><code>SAFE_REWRITE_WHERE_REQUIRED</code></td><td><code>partial</code></td><td><code>oracle_where_presence</code></td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_WHERE_MISSING</code></td></tr>
+      <tr><td><code>SAFE_REWRITE_WHERE_SEMANTIC_MATCH</code></td><td><code>human</code></td><td><code>task_semantic_review</code></td><td>reviewer / future semantic validator</td><td>no current <code>ORACLE_WHERE_MISMATCH</code></td></tr>
+      <tr><td><code>SAFE_REWRITE_GROUP_BY_REQUIRED</code></td><td><code>partial</code></td><td><code>oracle_group_presence</code></td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_GROUP_BY_MISSING</code></td></tr>
+      <tr><td><code>SAFE_REWRITE_ORDER_BY_REQUIRED</code></td><td><code>partial</code></td><td><code>oracle_order_presence</code></td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_ORDER_BY_MISSING</code></td></tr>
+      <tr><td><code>SAFE_REWRITE_FORBIDDEN_CONSTRUCTS</code></td><td><code>yes</code></td><td><code>forbidden_constructs_catalog</code></td><td><code>data/sql_guard/forbidden_constructs.yaml</code></td><td>catalog labels, not integrated here</td></tr>
+      <tr><td><code>SAFE_REWRITE_NO_HARDCODED_PII_OR_IDS</code></td><td><code>partial</code></td><td><code>literal_scanner_plus_task_context</code></td><td>future safe_rewrite validator</td><td>validator warning/blocker by context</td></tr>
+    </tbody>
+  </table>
+
+  <h2>9. Связь с AST modules</h2>
+  <table>
+    <thead><tr><th>Rule</th><th>AST module</th><th>Finding</th><th>Комментарий</th></tr></thead>
+    <tbody>
+      <tr><td>Raw PII in projection</td><td><code>app/ast_pii_masking.py</code></td><td><code>DIRECT_SENSITIVE</code></td><td>Проверяет колонки в SELECT-проекции; PII в WHERE не флагуется этим модулем.</td></tr>
+      <tr><td>Masking downgrade</td><td><code>app/ast_pii_masking.py</code></td><td><code>MASKING_DOWNGRADED</code></td><td>Эталон маскирует, candidate возвращает сырое значение.</td></tr>
+      <tr><td>Masking class mismatch</td><td><code>app/ast_pii_masking.py</code></td><td><code>MASKING_TYPE_MISMATCH</code></td><td>Классы маскировки отличаются: например <code>hash</code> вместо <code>partial</code>.</td></tr>
+      <tr><td>Missing WHERE</td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_WHERE_MISSING</code></td><td>Проверяет только отсутствие WHERE, не смысл условия.</td></tr>
+      <tr><td>Missing/wider LIMIT</td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_LIMIT_MISSING</code>, <code>ORACLE_LIMIT_TOO_WIDE</code></td><td>Не проверяет кратность 10 и non-literal <code>LIMIT $1</code>.</td></tr>
+      <tr><td>Table/projection mismatch</td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_TABLES_MISMATCH</code>, <code>ORACLE_COLUMNS_MISSING</code>, <code>ORACLE_COLUMNS_EXTRA</code></td><td>Сравнивает candidate с oracle, но не читает <code>schema_scope</code>.</td></tr>
+      <tr><td>Group/order mismatch</td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_GROUP_BY_MISSING</code>, <code>ORACLE_ORDER_BY_MISSING</code></td><td><code>ORDER BY</code> сейчас warning severity 3.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 10 -->
+  <h2>10. Применение в LLM-генерации эталонов (опционально)</h2>
   <p>
     Разделы 2–5 и таблицы §3 пригодны для копирования в <b>system prompt</b> LLM-разметчика, который готовит черновик
     эталона для нового кейса. При необходимости Иван подключит этот файл как RAG-документ в prompt registry.
@@ -435,7 +679,7 @@ LIMIT 1000;</code></pre>
   </p>
 
   <footer>
-    marina-04 · Golden Dataset safe_rewrite rules · согласуется с marina-01 (AST-сравнение), marina-02 (<code>_PII_MASK_CLASS</code>), marina-03 (запрещённые конструкты), ksenia-04 (примеры RAG).
+    marina-04 · Golden Dataset safe_rewrite rules · согласуется с marina-01 (AST-сравнение), marina-02 (<code>_PII_MASK_CLASS</code>), marina-03 (запрещённые конструкты), ksenia-04 (примеры RAG), TZ-03 machine map.
   </footer>
 
 </div>

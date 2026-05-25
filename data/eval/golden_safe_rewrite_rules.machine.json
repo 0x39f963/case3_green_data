@@ -1,0 +1,374 @@
+{
+  "generated_at": "2026-05-25 10:58:37 MSK",
+  "artifact": "golden_safe_rewrite_rules",
+  "source_doc": "data/eval/golden_safe_rewrite_rules.html",
+  "version": "tz03_quality_2026_05_25",
+  "status": "quality_artifact_only_not_runtime_integration",
+  "notes": [
+    "This file maps human safe_rewrite rules to machine-check hints for a future validator.",
+    "It does not change runtime behavior and is not imported by app/sql_guard.py.",
+    "Finding labels are based on app/ast_pii_masking.py and app/ast_oracle_check.py as read on 2026-05-25."
+  ],
+  "rule_map": [
+    {
+      "rule_id": "SAFE_REWRITE_SELECT_ONLY",
+      "severity": "blocker",
+      "machine_checkable": "yes",
+      "check_type": "ast_statement_type",
+      "used_by": ["future_safe_rewrite_validator"],
+      "current_modules": [],
+      "finding_labels": [],
+      "requires_context": [],
+      "notes": "safe_rewrite must be SELECT or read-only WITH SELECT."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_NO_SELECT_STAR",
+      "severity": "blocker",
+      "machine_checkable": "yes",
+      "check_type": "ast_projection_a_star",
+      "used_by": ["future_safe_rewrite_validator", "data/sql_guard/forbidden_constructs.yaml"],
+      "current_modules": [],
+      "finding_labels": ["SELECT_STAR"],
+      "requires_context": [],
+      "notes": "Current oracle summary ignores A_Star in projection; a safe_rewrite validator should check it directly."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_SCHEMA_SCOPE_ONLY",
+      "severity": "blocker",
+      "machine_checkable": "partial",
+      "check_type": "tables_subset_schema_scope",
+      "used_by": ["future_safe_rewrite_validator", "app/ast_oracle_check.py"],
+      "current_modules": ["app/ast_oracle_check.py"],
+      "finding_labels": ["ORACLE_TABLES_MISMATCH"],
+      "requires_context": ["schema_scope", "oracle_sql"],
+      "notes": "Oracle comparison can detect candidate/oracle table mismatch, but schema_scope validation needs dataset row context."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_JOIN_ON_ONLY",
+      "severity": "blocker",
+      "machine_checkable": "partial",
+      "check_type": "join_has_on_clause",
+      "used_by": ["future_safe_rewrite_validator"],
+      "current_modules": [],
+      "finding_labels": [],
+      "requires_context": ["ast_join_tree"],
+      "notes": "Comma joins should be rejected in safe_rewrite even if SQL is syntactically valid."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_NO_RAW_PII",
+      "severity": "blocker",
+      "machine_checkable": "yes",
+      "check_type": "ast_projection_sensitive_column",
+      "used_by": ["app/ast_pii_masking.py"],
+      "current_modules": ["app/ast_pii_masking.py"],
+      "finding_labels": ["DIRECT_SENSITIVE"],
+      "requires_context": ["sensitive_fields"],
+      "notes": "Alias is not masking; PII in SELECT projection must be masked, aggregated, or omitted."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_MASK_CLASS_MATCH",
+      "severity": "blocker",
+      "machine_checkable": "yes",
+      "check_type": "ast_projection_mask_class",
+      "used_by": ["app/ast_pii_masking.py"],
+      "current_modules": ["app/ast_pii_masking.py"],
+      "finding_labels": ["MASKING_DOWNGRADED", "MASKING_TYPE_MISMATCH"],
+      "requires_context": ["sensitive_fields", "oracle_sql"],
+      "notes": "Candidate masking class should match oracle masking class."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_LIMIT_REQUIRED",
+      "severity": "blocker",
+      "machine_checkable": "partial",
+      "check_type": "oracle_limit_presence",
+      "used_by": ["app/ast_oracle_check.py", "future_safe_rewrite_validator"],
+      "current_modules": ["app/ast_oracle_check.py"],
+      "finding_labels": ["ORACLE_LIMIT_MISSING"],
+      "requires_context": ["oracle_sql", "task_intent"],
+      "notes": "Oracle comparison detects missing LIMIT when oracle has one; deciding whether safe_rewrite itself needs LIMIT requires task intent."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_LIMIT_NOT_WIDER",
+      "severity": "blocker",
+      "machine_checkable": "yes",
+      "check_type": "oracle_limit_value_compare",
+      "used_by": ["app/ast_oracle_check.py"],
+      "current_modules": ["app/ast_oracle_check.py"],
+      "finding_labels": ["ORACLE_LIMIT_TOO_WIDE"],
+      "requires_context": ["oracle_sql"],
+      "notes": "Candidate LIMIT must not be wider than oracle LIMIT when both are integer constants."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_LIMIT_LITERAL_STEP",
+      "severity": "warning",
+      "machine_checkable": "partial",
+      "check_type": "limit_literal_int_allowed_step",
+      "used_by": ["future_safe_rewrite_validator"],
+      "current_modules": [],
+      "finding_labels": [],
+      "requires_context": ["task_intent"],
+      "notes": "Allowed list-like LIMIT values are 10, 20, 50, 100, 500; aggregate single-row queries may use LIMIT 1 or omit LIMIT."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_WHERE_REQUIRED",
+      "severity": "blocker",
+      "machine_checkable": "partial",
+      "check_type": "oracle_where_presence",
+      "used_by": ["app/ast_oracle_check.py", "future_safe_rewrite_validator"],
+      "current_modules": ["app/ast_oracle_check.py"],
+      "finding_labels": ["ORACLE_WHERE_MISSING"],
+      "requires_context": ["oracle_sql", "task_intent"],
+      "notes": "Oracle comparison detects missing WHERE only when oracle has WHERE."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_WHERE_SEMANTIC_MATCH",
+      "severity": "blocker",
+      "machine_checkable": "human",
+      "check_type": "task_semantic_review",
+      "used_by": ["reviewer", "future_semantic_validator"],
+      "current_modules": [],
+      "finding_labels": [],
+      "requires_context": ["task", "business_meaning"],
+      "notes": "No current ORACLE_WHERE_MISMATCH finding exists; status=0 vs status=1 needs semantic review."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_GROUP_BY_REQUIRED",
+      "severity": "blocker",
+      "machine_checkable": "partial",
+      "check_type": "oracle_group_presence",
+      "used_by": ["app/ast_oracle_check.py", "future_safe_rewrite_validator"],
+      "current_modules": ["app/ast_oracle_check.py"],
+      "finding_labels": ["ORACLE_GROUP_BY_MISSING"],
+      "requires_context": ["oracle_sql", "task_intent"],
+      "notes": "Oracle comparison detects missing GROUP BY when oracle has GROUP BY."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_ORDER_BY_REQUIRED",
+      "severity": "warning",
+      "machine_checkable": "partial",
+      "check_type": "oracle_order_presence",
+      "used_by": ["app/ast_oracle_check.py", "future_safe_rewrite_validator"],
+      "current_modules": ["app/ast_oracle_check.py"],
+      "finding_labels": ["ORACLE_ORDER_BY_MISSING"],
+      "requires_context": ["oracle_sql", "task_intent"],
+      "notes": "Current severity is warning-level in ast_oracle_check.py."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_FORBIDDEN_CONSTRUCTS",
+      "severity": "blocker",
+      "machine_checkable": "yes",
+      "check_type": "forbidden_constructs_catalog",
+      "used_by": ["data/sql_guard/forbidden_constructs.yaml", "future_safe_rewrite_validator"],
+      "current_modules": [],
+      "finding_labels": [],
+      "requires_context": [],
+      "notes": "Catalog quality was handled in TZ-02; this artifact only references the contract."
+    },
+    {
+      "rule_id": "SAFE_REWRITE_NO_HARDCODED_PII_OR_IDS",
+      "severity": "blocker",
+      "machine_checkable": "partial",
+      "check_type": "literal_scanner_plus_task_context",
+      "used_by": ["future_safe_rewrite_validator", "reviewer"],
+      "current_modules": [],
+      "finding_labels": [],
+      "requires_context": ["task", "allowed_literals"],
+      "notes": "Hardcoded user ids, PII literals, and absolute dates need context; placeholders are preferred."
+    }
+  ],
+  "edge_examples": [
+    {
+      "example_id": "PII_ALIAS_AS_NOT_MASK",
+      "category": "pii_masking",
+      "task": "Контакты активных сотрудников.",
+      "schema_scope": ["sys_employee"],
+      "bad_sql": "SELECT email AS contact\nFROM sys_employee\nWHERE status = 1\nLIMIT 50;",
+      "good_safe_rewrite": "SELECT md5(email) AS email_hash\nFROM sys_employee\nWHERE status = 1\nLIMIT 50;",
+      "bad_reason": "Alias changes the output name but still exposes raw email.",
+      "expected_check": {
+        "machine_checkable": "yes",
+        "current_module": "app/ast_pii_masking.py",
+        "finding_labels": ["DIRECT_SENSITIVE"]
+      }
+    },
+    {
+      "example_id": "PII_CONCAT_RAW_FIRST_ARG",
+      "category": "pii_masking",
+      "task": "Ключ для сверки сотрудников.",
+      "schema_scope": ["sys_employee"],
+      "bad_sql": "SELECT concat(email, ':active') AS emp_key\nFROM sys_employee\nWHERE status = 1\nLIMIT 50;",
+      "good_safe_rewrite": "SELECT md5(email) AS email_hash\nFROM sys_employee\nWHERE status = 1\nLIMIT 50;",
+      "bad_reason": "email is the first concat argument and remains raw PII.",
+      "expected_check": {
+        "machine_checkable": "yes",
+        "current_module": "app/ast_pii_masking.py",
+        "finding_labels": ["DIRECT_SENSITIVE"]
+      }
+    },
+    {
+      "example_id": "PII_FORMAT_RAW_FIRST_ARG",
+      "category": "pii_masking",
+      "task": "Форматированная метка сотрудника.",
+      "schema_scope": ["sys_employee"],
+      "bad_sql": "SELECT format(first_name, sur_name) AS person_label\nFROM sys_employee\nWHERE status = 1\nLIMIT 50;",
+      "good_safe_rewrite": "SELECT LEFT(first_name, 1) || '.' AS first_initial,\n       LEFT(sur_name, 1) || '.' AS sur_initial\nFROM sys_employee\nWHERE status = 1\nLIMIT 50;",
+      "bad_reason": "first_name is a raw PII argument to format; expected safe_rewrite uses partial masking.",
+      "expected_check": {
+        "machine_checkable": "yes",
+        "current_module": "app/ast_pii_masking.py",
+        "finding_labels": ["DIRECT_SENSITIVE"]
+      }
+    },
+    {
+      "example_id": "PII_WRONG_MASK_CLASS",
+      "category": "pii_masking",
+      "task": "Телефоны сотрудников в безопасном виде.",
+      "schema_scope": ["sys_employee"],
+      "bad_sql": "SELECT md5(phone) AS phone_hash\nFROM sys_employee\nWHERE status = 1\nLIMIT 50;",
+      "good_safe_rewrite": "SELECT LEFT(phone, 4) || '****' AS phone_masked\nFROM sys_employee\nWHERE status = 1\nLIMIT 50;",
+      "bad_reason": "phone canonical class is partial in the rules, not hash.",
+      "expected_check": {
+        "machine_checkable": "yes",
+        "current_module": "app/ast_pii_masking.py",
+        "finding_labels": ["MASKING_TYPE_MISMATCH"],
+        "note": "Detected when bad SQL is compared as candidate against the good safe_rewrite oracle."
+      }
+    },
+    {
+      "example_id": "LIMIT_NON_LITERAL",
+      "category": "limit",
+      "task": "Список активных заявок.",
+      "schema_scope": ["corp_tech_application"],
+      "bad_sql": "SELECT id, name__ru, create_date\nFROM corp_tech_application\nWHERE status = 1\nORDER BY create_date DESC\nLIMIT $1;",
+      "good_safe_rewrite": "SELECT id, name__ru, create_date\nFROM corp_tech_application\nWHERE status = 1\nORDER BY create_date DESC\nLIMIT 100;",
+      "bad_reason": "safe_rewrite should use a stable integer LIMIT so oracle comparison has a fixed width.",
+      "expected_check": {
+        "machine_checkable": "partial",
+        "current_module": null,
+        "future_check_type": "limit_literal_int"
+      }
+    },
+    {
+      "example_id": "LIMIT_MAGIC_VALUE",
+      "category": "limit",
+      "task": "Последние договоры клиента.",
+      "schema_scope": ["credit_contract"],
+      "bad_sql": "SELECT id, credit_start_date, cr_status_id\nFROM credit_contract\nWHERE link_customer_id = $1\nORDER BY credit_start_date DESC\nLIMIT 17;",
+      "good_safe_rewrite": "SELECT id, credit_start_date, cr_status_id\nFROM credit_contract\nWHERE link_customer_id = $1\nORDER BY credit_start_date DESC\nLIMIT 20;",
+      "bad_reason": "17 is not one of the allowed list-like LIMIT steps.",
+      "expected_check": {
+        "machine_checkable": "partial",
+        "current_module": null,
+        "future_check_type": "limit_allowed_step"
+      }
+    },
+    {
+      "example_id": "LIMIT_AGG_SINGLE_ROW",
+      "category": "limit",
+      "task": "Количество активных заявок.",
+      "schema_scope": ["scp_application"],
+      "bad_sql": "SELECT COUNT(*) AS app_count\nFROM scp_application\nWHERE status = 1\nLIMIT 100;",
+      "good_safe_rewrite": "SELECT COUNT(*) AS app_count\nFROM scp_application\nWHERE status = 1\nLIMIT 1;",
+      "bad_reason": "A single-row aggregate should use LIMIT 1 or no LIMIT, not a list-like LIMIT.",
+      "expected_check": {
+        "machine_checkable": "partial",
+        "current_module": null,
+        "future_check_type": "aggregate_single_row_limit"
+      }
+    },
+    {
+      "example_id": "WHERE_STATUS_SEMANTIC",
+      "category": "where",
+      "task": "Активные заявки.",
+      "schema_scope": ["corp_tech_application"],
+      "bad_sql": "SELECT id, name__ru, status\nFROM corp_tech_application\nWHERE status = 0\nLIMIT 100;",
+      "good_safe_rewrite": "SELECT id, name__ru, status\nFROM corp_tech_application\nWHERE status = 1\nLIMIT 100;",
+      "bad_reason": "WHERE exists but changes the task meaning from active to inactive records.",
+      "expected_check": {
+        "machine_checkable": "human",
+        "current_module": null,
+        "future_check_type": "where_semantic_match",
+        "note": "No current ORACLE_WHERE_MISMATCH finding exists."
+      }
+    },
+    {
+      "example_id": "WHERE_REQUIRED_MISSING",
+      "category": "where",
+      "task": "Мои активные заявки.",
+      "schema_scope": ["corp_tech_application"],
+      "bad_sql": "SELECT id, name__ru, status\nFROM corp_tech_application\nORDER BY create_date DESC\nLIMIT 100;",
+      "good_safe_rewrite": "SELECT id, name__ru, status\nFROM corp_tech_application\nWHERE initiator_id = $1 AND status = 1\nORDER BY create_date DESC\nLIMIT 100;",
+      "bad_reason": "The user/status filter is missing.",
+      "expected_check": {
+        "machine_checkable": "partial",
+        "current_module": "app/ast_oracle_check.py",
+        "finding_labels": ["ORACLE_WHERE_MISSING"]
+      }
+    },
+    {
+      "example_id": "WHERE_HARDCODED_ID_DATE",
+      "category": "where",
+      "task": "Мои заявки за 30 дней.",
+      "schema_scope": ["corp_tech_application"],
+      "bad_sql": "SELECT id, name__ru, create_date\nFROM corp_tech_application\nWHERE initiator_id = 7812\n  AND create_date >= '2026-04-23'\nLIMIT 100;",
+      "good_safe_rewrite": "SELECT id, name__ru, create_date\nFROM corp_tech_application\nWHERE initiator_id = $1\n  AND create_date >= CURRENT_DATE - INTERVAL '30 days'\nLIMIT 100;",
+      "bad_reason": "Hardcoded user id and absolute date make the oracle less reusable.",
+      "expected_check": {
+        "machine_checkable": "partial",
+        "current_module": null,
+        "future_check_type": "literal_scanner_plus_task_context"
+      }
+    },
+    {
+      "example_id": "JOIN_OUT_OF_SCOPE_TABLE",
+      "category": "join_schema_scope",
+      "task": "Заявки по бизнес-сегменту.",
+      "schema_scope": ["corp_tech_application", "business_segment"],
+      "bad_sql": "SELECT a.id, e.name__ru AS manager_name\nFROM corp_tech_application AS a\nJOIN sys_employee AS e ON e.id = a.emp_id\nWHERE a.status = 1\nLIMIT 100;",
+      "good_safe_rewrite": "SELECT b.name__ru AS segment_name, COUNT(*) AS app_count\nFROM corp_tech_application AS a\nJOIN business_segment AS b ON b.id = a.scp_business_segment\nWHERE a.status = 1\nGROUP BY b.name__ru\nORDER BY app_count DESC\nLIMIT 20;",
+      "bad_reason": "sys_employee is outside the example schema_scope.",
+      "expected_check": {
+        "machine_checkable": "partial",
+        "current_module": "app/ast_oracle_check.py",
+        "finding_labels": ["ORACLE_TABLES_MISMATCH"],
+        "future_check_type": "tables_subset_schema_scope"
+      }
+    },
+    {
+      "example_id": "JOIN_IMPLICIT_COMMA",
+      "category": "join_schema_scope",
+      "task": "Заявки с названием сегмента.",
+      "schema_scope": ["corp_tech_application", "business_segment"],
+      "bad_sql": "SELECT a.id, b.name__ru AS segment_name\nFROM corp_tech_application a, business_segment b\nWHERE a.scp_business_segment = b.id\nLIMIT 100;",
+      "good_safe_rewrite": "SELECT a.id, b.name__ru AS segment_name\nFROM corp_tech_application AS a\nJOIN business_segment AS b ON b.id = a.scp_business_segment\nLIMIT 100;",
+      "bad_reason": "Comma join is valid SQL but weak for consistent AST comparison.",
+      "expected_check": {
+        "machine_checkable": "partial",
+        "current_module": null,
+        "future_check_type": "join_has_on_clause"
+      }
+    }
+  ],
+  "current_module_gaps": [
+    {
+      "gap": "where_semantic_mismatch",
+      "current_state": "app/ast_oracle_check.py has ORACLE_WHERE_MISSING but no ORACLE_WHERE_MISMATCH.",
+      "deferred_reason": "Requires task/business meaning, not only AST shape."
+    },
+    {
+      "gap": "safe_rewrite_limit_literal_and_allowed_step",
+      "current_state": "app/ast_oracle_check.py extracts integer LIMIT for comparison but does not reject LIMIT $1 or LIMIT 17 in safe_rewrite.",
+      "deferred_reason": "This is a future safe_rewrite validator rule, not runtime integration."
+    },
+    {
+      "gap": "schema_scope_subset_validation",
+      "current_state": "app/ast_oracle_check.py compares candidate tables to oracle tables but does not read dataset schema_scope.",
+      "deferred_reason": "Needs Golden row context."
+    },
+    {
+      "gap": "join_style_validation",
+      "current_state": "No current AST finding rejects comma joins when table sets match.",
+      "deferred_reason": "Can be added to a data-artifact validator before runtime use."
+    }
+  ]
+}
