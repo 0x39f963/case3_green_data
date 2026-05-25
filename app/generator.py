@@ -23,7 +23,7 @@ if str(_TASK3_ROOT) not in sys.path:
 
 from baseline1 import SQLGenerator as _BaseSQLGenerator, AuditResult  # noqa: E402
 
-from app import llm_provider, prompt_registry, rag_adapter  # noqa: E402
+from app import llm_provider, prompt_registry, rag_adapter, runtime_context  # noqa: E402
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
@@ -364,6 +364,7 @@ class SQLGenerator(_BaseSQLGenerator):
         промпт ещё одной обобщённой подсказкой не нужно.
         """
         context = generation_context or rag_adapter.get_generation_context(task_description)
+        runtime_block = runtime_context.build_runtime_context()
         system_record = prompt_registry.get_default_prompt("generator_system")
         system_prompt = system_record.text
         system_meta = system_record.meta
@@ -386,6 +387,7 @@ class SQLGenerator(_BaseSQLGenerator):
                     allowed_objects=allowed_objects,
                     solutions_context=solutions_context or "",
                     intent_block=intent_line,
+                    runtime_context=runtime_block,
                 )
             except KeyError:
                 user_prompt = (
@@ -395,6 +397,7 @@ class SQLGenerator(_BaseSQLGenerator):
                         generation_context=context,
                         allowed_objects=allowed_objects,
                         solutions_context=solutions_context or "",
+                        runtime_context=runtime_block,
                     )
                 )
         else:
@@ -408,6 +411,7 @@ class SQLGenerator(_BaseSQLGenerator):
                     allowed_objects=allowed_objects,
                     banned_identifiers=banned_block,
                     intent_block=intent_line,
+                    runtime_context=runtime_block,
                 )
             except KeyError:
                 user_prompt = (
@@ -419,6 +423,7 @@ class SQLGenerator(_BaseSQLGenerator):
                         generation_context=context,
                         allowed_objects=allowed_objects,
                         banned_identifiers=banned_block,
+                        runtime_context=runtime_block,
                     )
                 )
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import sys
+from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -144,8 +145,23 @@ def check_business_alignment(
         if req.needs_human or (req.type in {"time_range", "status_filter", "group_by"} and not req.acceptable_columns):
             uncertain.append(req)
             continue
-        if req.type == "time_range" and not _has_time_filter(sql, req.acceptable_columns):
-            missing_filters.append(req)
+        if req.type == "time_range":
+            if not _has_time_filter(sql, req.acceptable_columns):
+                missing_filters.append(req)
+            elif _has_stale_date_literals(sql):
+                mismatches.append(
+                    Requirement(
+                        type=req.type,
+                        required=req.required,
+                        text=req.text + " uses stale literal dates: " + ", ".join(_date_literals(sql)[:4]),
+                        acceptable_columns=req.acceptable_columns,
+                        acceptable_predicates=req.acceptable_predicates,
+                        period=req.period,
+                        confidence=req.confidence,
+                        needs_human=req.needs_human,
+                        source=req.source,
+                    )
+                )
         elif req.type == "status_filter" and not _has_status_filter(sql, req.acceptable_columns):
             missing_filters.append(req)
         elif req.type == "group_by" and not _has_group_by(sql, req.acceptable_columns):
@@ -336,6 +352,25 @@ def _has_group_by(sql: str, columns: Iterable[str]) -> bool:
     if re.search(r"(^|,)\s*1\s*(,|$)", group):
         first = _first_select_item(text)
         return any(re.search(r"(?:[a-z_][\w]*\.)?" + re.escape(col.lower()) + r"\b", first) for col in columns)
+    return False
+
+
+def _date_literals(sql: str) -> list[str]:
+    return re.findall(r"\b(?:19|20)\d{2}-\d{2}-\d{2}\b", sql or "")
+
+
+def _has_stale_date_literals(sql: str) -> bool:
+    dates = _date_literals(sql)
+    if not dates:
+        return False
+    current_year = datetime.now().year
+    for item in dates:
+        try:
+            year = int(item[:4])
+        except ValueError:
+            continue
+        if year < current_year - 1:
+            return True
     return False
 
 

@@ -380,18 +380,6 @@ def _node_generate(state: PipelineState) -> PipelineState:
                     matched=tuple(state.get("intent_anchors", []) or ()),
                 )
             )
-            generated = generator.generate(
-                task_description=state["task"],
-                sql_history=state.get("sql_history", []),
-                audit_feedback=state.get("last_audit"),
-                iteration=iteration,
-                generation_context=state.get("last_generation_context", ""),
-                allowed_objects=state.get("allowed_objects", ""),
-                solutions_context=state.get("last_solutions_context", ""),
-                banned_identifiers=banned_identifiers,
-                intent_block=intent_block,
-            )
-            candidates = generated if isinstance(generated, list) else [generated]
             prior_sql = state.get("sql_history", [])[-1] if state.get("sql_history") else ""
             selector_ctx = {
                 "task": state["task"],
@@ -407,12 +395,61 @@ def _node_generate(state: PipelineState) -> PipelineState:
             requirements = business_alignment.extract_requirements(state["task"], selector_ctx)
             requirement_dicts = business_alignment.requirements_to_dicts(requirements)
             selector_ctx["business_requirements"] = requirement_dicts
+
+            deterministic_sql = generator_selector.literal_id_filter_candidate(selector_ctx)
+            if deterministic_sql:
+                candidates = [deterministic_sql]
+                original_candidate_count = len(candidates)
+                event["details"] = {
+                    "deterministic_literal_id_candidate": True,
+                    "generation_context": state.get("last_generation_context", ""),
+                    "allowed_objects": state.get("allowed_objects", ""),
+                    "candidates": [
+                        {
+                            "candidate_index": 0,
+                            "sql": deterministic_sql,
+                            "response": "",
+                            "backend": "deterministic",
+                            "model": "literal_id_filter",
+                        }
+                    ],
+                }
+            else:
+                generated = generator.generate(
+                    task_description=state["task"],
+                    sql_history=state.get("sql_history", []),
+                    audit_feedback=state.get("last_audit"),
+                    iteration=iteration,
+                    generation_context=state.get("last_generation_context", ""),
+                    allowed_objects=state.get("allowed_objects", ""),
+                    solutions_context=state.get("last_solutions_context", ""),
+                    banned_identifiers=banned_identifiers,
+                    intent_block=intent_block,
+                )
+                candidates = generated if isinstance(generated, list) else [generated]
+                original_candidate_count = len(candidates)
+                candidates = generator_selector.add_literal_id_repair_candidates(candidates, selector_ctx)
+                event["details"] = generator.last_call
+
             selected = generator_selector.select_best_with_details(candidates, selector_ctx)
             sql = selected.sql
             event["outputs"]["sql"] = sql
             event["outputs"]["candidate_count"] = len(candidates)
             event["outputs"]["selected_index"] = selected.selected_index
-            event["details"] = generator.last_call
+            if len(candidates) > original_candidate_count:
+                event["details"]["literal_id_repair_added"] = True
+                detail_candidates = event["details"].setdefault("candidates", [])
+                if isinstance(detail_candidates, list):
+                    for idx in range(original_candidate_count, len(candidates)):
+                        detail_candidates.append(
+                            {
+                                "candidate_index": idx,
+                                "sql": candidates[idx],
+                                "response": "",
+                                "backend": "deterministic",
+                                "model": "literal_id_repair",
+                            }
+                        )
             event["details"]["generate_candidates"] = candidates
             event["details"]["selector_scores"] = selected.scores
             event["details"]["selected_index"] = selected.selected_index

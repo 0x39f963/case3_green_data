@@ -468,6 +468,33 @@ def test_selector_falls_back_to_sentinel_when_others_broken() -> None:
     assert res.scores[1]["is_sentinel"] is True
 
 
+def test_literal_id_filter_repairs_overblocked_insufficient_context() -> None:
+    candidates = [
+        "SELECT 'INSUFFICIENT_CONTEXT' AS reason, 'initiator_id 7812 not found in allowed tables' AS missing"
+    ]
+    ctx = {
+        "task": "Активные заявки initiator_id 7812",
+        "allowed_tables": ["application_obj", "corp_tech_application"],
+        "allowed_columns": {
+            "application_obj": ["id", "status", "initiator_id"],
+            "corp_tech_application": ["id", "status", "initiator_id", "create_date"],
+        },
+        "sensitive_fields": {},
+    }
+
+    repaired = generator_selector.add_literal_id_repair_candidates(candidates, ctx)
+    res = generator_selector.select_best_with_details(repaired, ctx)
+    direct = generator_selector.literal_id_filter_candidate(ctx)
+
+    assert len(repaired) == 2
+    assert res.selected_index == 1
+    assert direct == res.sql
+    assert "FROM corp_tech_application" in res.sql
+    assert "initiator_id = 7812" in res.sql
+    assert "status = 1" in res.sql
+    assert "INSUFFICIENT_CONTEXT" not in res.sql
+
+
 def test_split_risk_scores_max_per_bucket() -> None:
     sql = "SELECT phone, * FROM sys_employee WHERE id = 1 OR 1=1"
     ctx = {"sensitive_fields": {"sys_employee": ["phone"]}}

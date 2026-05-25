@@ -34,7 +34,7 @@ from baseline1 import (  # noqa: E402
     Vulnerability,
 )
 
-from app import auditor_group_runner, classifier, llm_provider, prompt_registry, rag_adapter, sql_guard  # noqa: E402
+from app import auditor_group_runner, classifier, llm_provider, prompt_registry, rag_adapter, runtime_context, sql_guard  # noqa: E402
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 INTERNAL_LABELS = frozenset({"AUDIT_UNCERTAIN", "SYNTAX_BROKEN", "BROKEN_SQL", "NEEDS_HUMAN_REVIEW"})
@@ -400,6 +400,7 @@ class SecurityAuditor(_BaseSecurityAuditor):
         user_prompt = _load_prompt("auditor_user.txt").format(
             task=task,
             sql=sql_query,
+            runtime_context=runtime_context.build_runtime_context(),
             schema_context=schema_context[:6000],
             allowed_objects=rag_adapter.format_allowed_objects(allowed_columns or {}),
             security_context=security_context,

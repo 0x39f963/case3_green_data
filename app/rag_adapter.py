@@ -3,7 +3,7 @@
 
 Дает оркестратору функции с кешем и обрезанием по бюджету токенов.
 Marina `schema.json` остается источником таблиц и колонок, а
-`deploy/schema_overlay.json` добавляет бизнес-описания, aliases,
+`deploy/schema_overlay_v2.json` добавляет бизнес-описания, aliases,
 PII-теги и read-only policy. Если overlay отсутствует, слой работает
 как раньше и возвращает только контекст Марины.
 """
@@ -28,8 +28,10 @@ from jsonschema import Draft202012Validator
 _MARINA_ROOT = Path(__file__).resolve().parent.parent / "TASK-3" / "marina-case3-rag"
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SCHEMA_PATH = _MARINA_ROOT / "schema.json"
-_OVERLAY_PATH = _REPO_ROOT / "deploy" / "schema_overlay.json"
-_OVERLAY_SCHEMA_PATH = _REPO_ROOT / "deploy" / "schema_overlay.schema.json"
+_OVERLAY_PATH = _REPO_ROOT / "deploy" / "schema_overlay_v2.json"
+_OVERLAY_PATH_LEGACY = _REPO_ROOT / "deploy" / "schema_overlay.json"
+_OVERLAY_SCHEMA_PATH = _REPO_ROOT / "deploy" / "schema_overlay.schema.v2.json"
+_OVERLAY_SCHEMA_PATH_LEGACY = _REPO_ROOT / "deploy" / "schema_overlay.schema.json"
 if str(_MARINA_ROOT) not in sys.path:
     sys.path.insert(0, str(_MARINA_ROOT))
 
@@ -204,13 +206,18 @@ def _load_overlay() -> dict[str, Any]:
     Отсутствующий overlay не считается ошибкой: B2 smoke и старые
     окружения продолжают работать с Marina-only контекстом.
     """
-    if not _OVERLAY_PATH.exists():
-        return {}
-    data = json.loads(_OVERLAY_PATH.read_text(encoding="utf-8"))
-    if _OVERLAY_SCHEMA_PATH.exists():
-        schema = json.loads(_OVERLAY_SCHEMA_PATH.read_text(encoding="utf-8"))
-        Draft202012Validator(schema).validate(data)
-    return data
+    for overlay_path, schema_path in (
+        (_OVERLAY_PATH, _OVERLAY_SCHEMA_PATH),
+        (_OVERLAY_PATH_LEGACY, _OVERLAY_SCHEMA_PATH_LEGACY),
+    ):
+        if not overlay_path.exists():
+            continue
+        data = json.loads(overlay_path.read_text(encoding="utf-8"))
+        if schema_path.exists():
+            schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            Draft202012Validator(schema).validate(data)
+        return data
+    return {}
 
 
 def _join_generation_context(raw: str, overlay_text: str, v2_text: str) -> tuple[str, dict[str, int]]:
@@ -266,7 +273,7 @@ def get_generation_context_bundle(task: str) -> dict[str, Any]:
     v2_text, v2_meta = get_table_knowledge_v2_context_with_meta(task)
     link_seed = "\n\n".join(item for item in (v2_text, raw) if item)
     link = schema_link(task, link_seed)
-    overlay_text = _format_overlay_blocks(link["allowed_tables"])
+    overlay_text = _format_overlay_blocks(link["allowed_tables"], task=task)
     context, source_chars = _join_generation_context(raw, overlay_text, v2_text)
 
     v2_enabled = bool(v2_meta.get("enabled"))
@@ -583,15 +590,111 @@ def format_sensitive_fields(data: dict[str, list[str]]) -> str:
     return "\n".join(lines)
 
 
-def _format_overlay_blocks(table_names: list[str]) -> str:
+def _text_tokens(text: str) -> set[str]:
+    tokens = {item.lower() for item in re.findall(r"[0-9A-Za-zА-Яа-я_]+", text or "")}
+    prefixes = {item[:4] for item in tokens if len(item) >= 4 and "_" not in item}
+    return tokens | prefixes
+
+
+def _column_score(name: str, item: dict[str, Any], task_tokens: set[str]) -> int:
+    if not task_tokens:
+        return 0
+    hay = [name, str(item.get("description") or "")]
+    hay.extend(str(value) for value in item.get("aliases") or [])
+    hay.extend(str(value) for value in item.get("nl_phrases") or [])
+    tokens = _text_tokens(" ".join(hay))
+    return len(tokens & task_tokens)
+
+
+def _short_text(text: str, limit: int) -> str:
+    value = " ".join(str(text or "").split())
+    if len(value) <= limit:
+        return value
+    return value[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _format_column_line(name: str, item: dict[str, Any]) -> str:
+    desc = _short_text(str(item.get("description") or ""), 220)
+    category = str(item.get("category") or "unknown")
+    aliases = _short_text(", ".join(str(value) for value in item.get("aliases") or []), 100)
+    phrases = _short_text(", ".join(str(value) for value in item.get("nl_phrases") or []), 140)
+    line = "- " + name + " [" + category + "]: " + desc
+    if aliases:
+        line += " Aliases: " + aliases + "."
+    if phrases:
+        line += " NL: " + phrases + "."
+    return line
+
+
+def _format_column_overlay(columns: dict[str, Any], task: str, limit: int = 16) -> list[str]:
+    task_tokens = _text_tokens(task)
+    scored: list[tuple[int, str, dict[str, Any]]] = []
+    fallback: list[tuple[int, str, dict[str, Any]]] = []
+    for idx, (name, item) in enumerate(columns.items()):
+        if not isinstance(item, dict):
+            continue
+        score = _column_score(name, item, task_tokens)
+        row = (score, str(name), item)
+        if score > 0:
+            scored.append(row)
+        elif item.get("category") not in {"system"}:
+            fallback.append((idx, str(name), item))
+
+    selected = [(name, item) for _, name, item in sorted(scored, key=lambda row: (-row[0], row[1]))[:limit]]
+    if len(selected) < limit:
+        seen = {name for name, _ in selected}
+        for _, name, item in fallback:
+            if name in seen:
+                continue
+            selected.append((name, item))
+            seen.add(name)
+            if len(selected) >= limit:
+                break
+
+    return [_format_column_line(name, item) for name, item in selected]
+
+
+def _format_matched_column_overlay(
+    table_names: list[str],
+    tables: dict[str, Any],
+    task: str,
+    limit: int = 24,
+) -> list[str]:
+    task_tokens = _text_tokens(task)
+    if not task_tokens:
+        return []
+    rows: list[tuple[int, str, str, dict[str, Any]]] = []
+    for table_name in table_names:
+        table = _base_name(table_name)
+        item = tables.get(table) or {}
+        columns = item.get("columns") or {}
+        if not isinstance(columns, dict):
+            continue
+        for col_name, col in columns.items():
+            if not isinstance(col, dict):
+                continue
+            score = _column_score(str(col_name), col, task_tokens)
+            if score > 0:
+                rows.append((score, table, str(col_name), col))
+    rows.sort(key=lambda row: (-row[0], row[1], row[2]))
+    return [
+        _format_column_line(table + "." + name, item)
+        for _, table, name, item in rows[:limit]
+    ]
+
+
+def _format_overlay_blocks(table_names: list[str], task: str = "") -> str:
     overlay = _load_overlay()
     tables = overlay.get("tables") or {}
     parts: list[str] = []
+    matched_columns = _format_matched_column_overlay(table_names, tables, task)
+    if matched_columns:
+        parts.append("Matched overlay v2 columns:\n" + "\n".join(matched_columns))
     for name in table_names:
         item = tables.get(_base_name(name))
         if not item:
             continue
-        parts.append(
+        block = (
             "Таблица: " + _base_name(name) + "\n"
             + "Бизнес-описание: " + str(item.get("business_description", "")) + "\n"
             + "Aliases: " + ", ".join(item.get("aliases") or []) + "\n"
@@ -599,6 +702,11 @@ def _format_overlay_blocks(table_names: list[str]) -> str:
             + "Allowed ops: " + ", ".join(item.get("allowed_ops") or ["SELECT"]) + "\n"
             + "PII tags: " + json.dumps(item.get("pii_tags") or {}, ensure_ascii=False)
         )
+        column_limit = 8 if task else 16
+        column_lines = _format_column_overlay(item.get("columns") or {}, task, limit=column_limit)
+        if column_lines:
+            block += "\nКолонки overlay v2:\n" + "\n".join(column_lines)
+        parts.append(block)
     return "\n\n".join(parts)
 
 

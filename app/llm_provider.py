@@ -80,7 +80,7 @@ def _ollama_model_lock(model: str) -> threading.Lock:
 
 # Бэкенды, которые мы умеем поднимать. local_openai - это любая
 # OpenAI-совместимая локальная модель (Ollama, vLLM, LM Studio).
-SUPPORTED_BACKENDS = {"openrouter", "local_openai", "anthropic_cli"}
+SUPPORTED_BACKENDS = {"openrouter", "local_openai", "anthropic_cli", "codex_cli"}
 
 
 def _is_qwen_thinking_model(model: str) -> bool:
@@ -101,7 +101,7 @@ def _is_qwen_thinking_model(model: str) -> bool:
     return True
 PROVIDER_TO_BACKEND = {"openrouter": "openrouter", "ollama": "local_openai"}
 
-GENERATOR_MODEL_DEFAULT = "qwen3-8b"
+GENERATOR_MODEL_DEFAULT = "qwen3-5-9b"
 OPENROUTER_GENERATOR_MODELS: dict[str, dict[str, str | int]] = {
     "qwen3-5-9b": {
         "provider": "openrouter",
@@ -198,6 +198,7 @@ GENERATOR_MODELS: dict[str, dict[str, str | int]] = {
 CONTOURS: dict[str, dict[str, str]] = {
     "dev_local": {"generator": "anthropic_cli", "auditor": "anthropic_cli"},
     "claude_cli": {"generator": "anthropic_cli", "auditor": "anthropic_cli"},
+    "codex_cli": {"generator": "codex_cli", "auditor": "codex_cli"},
     "prod_demo": {"generator": "openrouter", "auditor": "openrouter"},
     "mixed": {"generator": "openrouter", "auditor": "anthropic_cli"},
     "local_openai": {"generator": "local_openai", "auditor": "local_openai"},
@@ -210,11 +211,13 @@ DEFAULT_MODELS = {
         "openrouter": "openai/gpt-4o-mini",
         "local_openai": "qwen2.5-coder:14b",
         "anthropic_cli": "claude-sonnet-4-6",
+        "codex_cli": "gpt-5.5",
     },
     "auditor": {
         "openrouter": "openai/gpt-4o-mini",
         "local_openai": "qwen2.5:14b",
         "anthropic_cli": "claude-sonnet-4-6",
+        "codex_cli": "gpt-5.5",
     },
 }
 
@@ -986,11 +989,13 @@ _CLI_ENV_ALLOWLIST = (
     "http_proxy",
     "https_proxy",
     "no_proxy",
+    "CODEX_HOME",
 )
 _CLI_ENV_PREFIX_ALLOWLIST = (
     "ANTHROPIC_",
     "OPENAI_",
     "CLAUDE_",
+    "CODEX_",
 )
 _CLI_AUTH_KEYWORDS = (
     "unauthorized",
@@ -1186,6 +1191,40 @@ def _extract_claude_text(raw: dict[str, Any] | None, fallback: str) -> str:
     return fallback.strip()
 
 
+def _load_codex_jsonl(text: str) -> dict[str, Any] | None:
+    """Parse Codex CLI --json output and return final agent message + usage."""
+    if not text:
+        return None
+    last_message = ""
+    usage: dict[str, Any] = {}
+    events: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        events.append(event)
+        item = event.get("item") if isinstance(event.get("item"), dict) else {}
+        if item.get("type") == "agent_message" and isinstance(item.get("text"), str):
+            last_message = item["text"]
+        event_usage = event.get("usage")
+        if isinstance(event_usage, dict):
+            usage = event_usage
+    if not events:
+        return None
+    return {
+        "type": "codex_jsonl",
+        "result": last_message,
+        "usage": usage,
+        "events": events[-20:],
+    }
+
+
 def _cli_error_text(result: subprocess.CompletedProcess[str], parsed: dict[str, Any] | None) -> str:
     if parsed is not None:
         text = _extract_claude_text(parsed, "")
@@ -1244,6 +1283,24 @@ class CLISubprocessClient(LLMClient):
     ) -> list[str]:
         """Build backend-specific CLI command per Orchestra spec §6."""
         del output_path
+        if self.backend == "codex_cli":
+            cmd = [
+                self.binary,
+                "exec",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--skip-git-repo-check",
+                "--json",
+            ]
+            if self.model:
+                cmd.extend(["--model", self.model])
+            effort = os.environ.get("CODEX_GENERATOR_REASONING_EFFORT", "").strip()
+            if not effort and self.role == "generator":
+                effort = "medium"
+            if effort:
+                cmd.extend(["-c", 'model_reasoning_effort="' + effort + '"'])
+            cmd.append("-")
+            return cmd
+
         cmd = [
             self.binary,
             "-p",
@@ -1343,6 +1400,8 @@ class CLISubprocessClient(LLMClient):
                 }
                 if preexec_fn is not None:
                     run_kwargs["preexec_fn"] = preexec_fn
+                if self.backend == "codex_cli":
+                    run_kwargs["input"] = merged_prompt
                 result = subprocess.run(cmd, **run_kwargs)
             except FileNotFoundError as exc:
                 raise LLMConfigError(
@@ -1355,7 +1414,11 @@ class CLISubprocessClient(LLMClient):
                 ) from exc
             walltime_sec = time.perf_counter() - t0
 
-            parsed_raw = _load_json_object(result.stdout) or {}
+            parsed_raw = (
+                _load_codex_jsonl(result.stdout)
+                if self.backend == "codex_cli"
+                else _load_json_object(result.stdout)
+            ) or {}
             text = _extract_claude_text(parsed_raw, result.stdout)
 
             is_cli_error = bool(parsed_raw.get("is_error")) if isinstance(parsed_raw, dict) else False
@@ -1456,12 +1519,12 @@ def _model_for(role: str, backend: str) -> str:
                 return explicit
             # Иначе falls through на дефолт — это лучше, чем послать заведомо
             # невалидный slug в OR API и получить 400.
-        elif backend in {"anthropic_cli"} and "/" in explicit:
+        elif backend in {"anthropic_cli", "codex_cli"} and "/" in explicit:
             pass
         else:
             return explicit
 
-    if backend in {"anthropic_cli"}:
+    if backend in {"anthropic_cli", "codex_cli"}:
         return DEFAULT_MODELS[role][backend]
 
     if role == "generator":
@@ -1537,7 +1600,7 @@ def is_known_generator_model(model: str, llm_mode: str | None = None) -> bool:
         if mode not in CONTOURS:
             continue
         backend = CONTOURS[mode]["generator"]
-        if backend in {"anthropic_cli"}:
+        if backend in {"anthropic_cli", "codex_cli"}:
             return "/" not in raw
         models = _generator_models_for_backend(backend)
         if _resolve_generator_model_key(raw, models) in models:
@@ -1587,6 +1650,7 @@ def _provider_label(backend: str) -> str:
         "openrouter": "OpenRouter",
         "local_openai": "Local OpenAI",
         "anthropic_cli": "Anthropic CLI",
+        "codex_cli": "Codex CLI",
     }
     return labels.get(backend, backend)
 
@@ -1624,6 +1688,14 @@ def _build_client(role: str, backend: str) -> LLMClient:
             binary=os.environ.get("ANTHROPIC_CLI_PATH", "claude"),
             model=model,
             backend="anthropic_cli",
+            role=role,
+        )
+
+    if backend == "codex_cli":
+        return CLISubprocessClient(
+            binary=os.environ.get("CODEX_CLI_PATH", "codex"),
+            model=model,
+            backend="codex_cli",
             role=role,
         )
 
@@ -1764,6 +1836,13 @@ def _build_direct_client(backend: str, model: str, role: str = "direct") -> LLMC
             backend="anthropic_cli",
             role="direct",
         )
+    if backend == "codex_cli":
+        return CLISubprocessClient(
+            binary=os.environ.get("CODEX_CLI_PATH", "codex"),
+            model=model,
+            backend="codex_cli",
+            role=role,
+        )
 
     raise LLMConfigError("Неизвестный backend '" + backend + "'.")
 
@@ -1852,6 +1931,7 @@ def list_model_options() -> list[dict[str, Any]]:
         if item.strip()
     }
     anthropic_cli = os.environ.get("ANTHROPIC_CLI_PATH", "").strip()
+    codex_cli = os.environ.get("CODEX_CLI_PATH", "").strip()
     tool_support = _tool_support_from_report()
     provider_catalog = openrouter_provider_catalog()
     options: list[dict[str, Any]] = []
@@ -1914,6 +1994,22 @@ def list_model_options() -> list[dict[str, Any]]:
         "description": "Anthropic CLI generator/auditor · model from LLM_MODEL_GENERATOR or " + claude_default,
         "available_by_config": claude_in_path,
         "config_hint": "" if claude_in_path else "claude CLI not installed in image (see ANTHROPIC_CLI_PATH)",
+        "supports_tool_mode": "unsupported",
+    })
+
+    codex_default = str(DEFAULT_MODELS["generator"].get("codex_cli") or "")
+    codex_binary = codex_cli or "codex"
+    codex_in_path = bool(_shutil.which(codex_binary))
+    options.append({
+        "key": "codex-cli",
+        "label": "Codex CLI",
+        "llm_mode": "codex_cli",
+        "llm_generator_model": "",
+        "backend": "codex_cli",
+        "provider_model": codex_default,
+        "description": "OpenAI Codex CLI generator/auditor · model from LLM_MODEL_GENERATOR or " + codex_default,
+        "available_by_config": codex_in_path,
+        "config_hint": "" if codex_in_path else "codex CLI not installed in image (see CODEX_CLI_PATH)",
         "supports_tool_mode": "unsupported",
     })
 

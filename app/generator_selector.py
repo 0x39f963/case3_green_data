@@ -41,6 +41,33 @@ def select_best(candidates: list[str], ctx: dict[str, Any] | None = None) -> str
     return select_best_with_details(candidates, ctx).sql
 
 
+def add_literal_id_repair_candidates(candidates: list[str], ctx: dict[str, Any] | None = None) -> list[str]:
+    """Add a deterministic SQL candidate for overblocked numeric *_id filters.
+
+    Small local models sometimes treat `initiator_id 7812` as a missing schema
+    object and return INSUFFICIENT_CONTEXT. A numeric literal is not schema:
+    when the requested *_id column is explicitly allowed, build a conservative
+    row-level SELECT candidate and let the normal selector/guard score it.
+    """
+    ctx = ctx or {}
+    if not candidates or any(not _sentinel.is_sentinel(sql) for sql in candidates):
+        return candidates
+
+    repaired = _literal_id_filter_sql(str(ctx.get("task", "")), ctx)
+    if not repaired or repaired in candidates:
+        return candidates
+    return [*candidates, repaired]
+
+
+def literal_id_filter_candidate(ctx: dict[str, Any] | None = None) -> str:
+    """Build a deterministic candidate for simple row-level numeric *_id tasks."""
+    ctx = ctx or {}
+    task = str(ctx.get("task", ""))
+    if not _simple_row_level_id_task(task):
+        return ""
+    return _literal_id_filter_sql(task, ctx)
+
+
 def select_best_with_details(
     candidates: list[str],
     ctx: dict[str, Any] | None = None,
@@ -196,3 +223,115 @@ def _banned_identifier_hits(sql: str, banned: list[str]) -> list[str]:
         if re.search(pattern, lower):
             hits.append(token)
     return sorted(set(hits))
+
+
+_ID_LITERAL_RE = re.compile(
+    r"\b(?P<col>[A-Za-z_][A-Za-z0-9_]*_id)\b\s*(?:=|:)?\s*(?P<value>\d{1,18})\b",
+    re.IGNORECASE,
+)
+
+
+def _literal_id_filter_sql(task: str, ctx: dict[str, Any]) -> str:
+    pairs = _literal_id_filters(task)
+    if not pairs:
+        return ""
+    allowed_columns = ctx.get("allowed_columns") or {}
+    if not isinstance(allowed_columns, dict):
+        return ""
+
+    requested_cols = [col for col, _ in pairs]
+    table = _best_table_for_literal_filters(allowed_columns, requested_cols, task)
+    if not table:
+        return ""
+    cols = [str(col) for col in (allowed_columns.get(table) or [])]
+    colset = {col.lower() for col in cols}
+    sensitive = {
+        str(col).lower()
+        for col in ((ctx.get("sensitive_fields") or {}).get(table) or [])
+    }
+    if any(col.lower() in sensitive for col in requested_cols):
+        return ""
+
+    projection = _literal_projection(cols, requested_cols)
+    where_parts = [col + " = " + value for col, value in pairs]
+    if _task_mentions_active(task) and "status" in colset:
+        where_parts.append("status = 1")
+    order_col = "id" if "id" in colset else projection[0]
+    return (
+        "SELECT " + ", ".join(projection) + "\n"
+        "FROM " + table + "\n"
+        "WHERE " + " AND ".join(where_parts) + "\n"
+        "ORDER BY " + order_col + "\n"
+        "LIMIT 100"
+    )
+
+
+def _literal_id_filters(task: str) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for match in _ID_LITERAL_RE.finditer(task or ""):
+        col = match.group("col").lower()
+        value = match.group("value")
+        if col in seen:
+            continue
+        seen.add(col)
+        out.append((col, value))
+    return out
+
+
+def _best_table_for_literal_filters(
+    allowed_columns: dict[str, Any],
+    requested_cols: list[str],
+    task: str,
+) -> str:
+    candidates: list[tuple[int, str]] = []
+    lower_task = (task or "").lower()
+    for table, raw_cols in allowed_columns.items():
+        cols = {str(col).lower() for col in (raw_cols or [])}
+        if not all(col.lower() in cols for col in requested_cols):
+            continue
+        name = str(table)
+        score = 0
+        lowered = name.lower()
+        if "заяв" in lower_task or "application" in lower_task:
+            if "application" in lowered:
+                score += 20
+            if lowered != "application_obj":
+                score += 10
+        if "status" in cols:
+            score += 4
+        if "id" in cols:
+            score += 2
+        score -= len(cols) // 100
+        candidates.append((-score, name))
+    if not candidates:
+        return ""
+    return sorted(candidates)[0][1]
+
+
+def _literal_projection(cols: list[str], requested_cols: list[str]) -> list[str]:
+    colset = {col.lower(): col for col in cols}
+    ordered = ["id", *requested_cols, "status", "create_date"]
+    projection: list[str] = []
+    for col in ordered:
+        real = colset.get(col.lower())
+        if real and real not in projection:
+            projection.append(real)
+    if projection:
+        return projection
+    return cols[:1]
+
+
+def _task_mentions_active(task: str) -> bool:
+    return bool(re.search(r"\bactive\b|активн", task or "", re.IGNORECASE))
+
+
+def _simple_row_level_id_task(task: str) -> bool:
+    if not _literal_id_filters(task):
+        return False
+    aggregate_re = (
+        r"\b(count|sum|avg|min|max)\b|"
+        r"сколько|количеств|посчитай|сумм|средн|миним|максим|"
+        r"по статусам|групп|статистик|топ\b|top\b"
+    )
+    return not bool(re.search(aggregate_re, task or "", re.IGNORECASE))
