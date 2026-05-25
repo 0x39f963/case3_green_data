@@ -1,0 +1,63 @@
+- id: G1
+  slug: sql-injection
+  name: "SQL injection и технические атаки"
+  labels: [SQL_INJ_CLASSIC, SQL_INJ_UNION, SQL_INJ_TIME, UNION_EXFIL, MULTI_STATEMENT]
+  prompt_file: "data/audit_groups/group-1-sql-injection.txt"
+  examples_file: "data/audit_groups/group-1-examples.jsonl"
+  rag_source: "security_rag"
+  priority: 10
+
+- id: G2
+  slug: dml-ddl-privileges
+  name: "DML/DDL и эскалация привилегий"
+  labels: [DML_NO_WHERE, DDL_FORBIDDEN, TRUNCATE, INSERT_UNSAFE, COPY_EXPORT, PRIV_ESCALATE, PLPGSQL_UNSAFE, DYNAMIC_EXECUTE]
+  prompt_file: "data/audit_groups/group-2-dml-ddl-privileges.txt"
+  examples_file: "data/audit_groups/group-2-examples.jsonl"
+  rag_source: "security_rag"
+  priority: 10
+
+- id: G3
+  slug: pii-disclosure
+  name: "Раскрытие данных и PII"
+  labels: [DIRECT_SENSITIVE, SCHEMA_LEAK, EXCESSIVE_SCOPE, EXCESSIVE_PRIVILEGE]
+  prompt_file: "data/audit_groups/group-3-pii-disclosure.txt"
+  examples_file: "data/audit_groups/group-3-examples.jsonl"
+  rag_source: "security_rag"
+  priority: 10
+
+- id: G4
+  slug: schema-correctness
+  name: "Галлюцинации и соответствие схеме"
+  labels: [HALLUCINATED_TABLE, HALLUCINATED_COLUMN, WRONG_JOIN_PATH, AMBIGUOUS_USER_SCOPE, INVALID_COLUMN]
+  prompt_file: "data/audit_groups/group-4-schema-correctness.txt"
+  examples_file: "data/audit_groups/group-4-examples.jsonl"
+  rag_source: "quality_rag"
+  priority: 6
+
+- id: G5
+  slug: query-quality-cost
+  name: "Качество и стоимость запроса"
+  labels: [SELECT_STAR, NO_PAGINATION, NON_SARGABLE_FILTER, COST_DOS, CROSS_JOIN_EXPLOSION, RECURSIVE_UNBOUNDED, UNSAFE_CAST]
+  prompt_file: "data/audit_groups/group-5-query-quality-cost.txt"
+  examples_file: "data/audit_groups/group-5-examples.jsonl"
+  rag_source: "quality_rag"
+  priority: 5
+
+- id: G6
+  slug: prompt-injection
+  name: "Prompt injection атаки"
+  labels: [PROMPT_INJECTION_SQL_POLICY_BYPASS, PROMPT_FORCE_DML, PROMPT_FS_READ, PROMPT_IGNORE_GUARDRAILS, PROMPT_LLM_INJECTION, PROMPT_LLM_SUSPICIOUS, PROMPT_SCHEMA_EXFIL, PROMPT_TOXICSQL_BACKDOOR_TRIGGER]
+  prompt_file: "data/audit_groups/group-6-prompt-injection.txt"
+  examples_file: "data/audit_groups/group-6-examples.jsonl"
+  rag_source: "security_rag"
+  priority: 10
+
+- id: G7
+  slug: technical-signals
+  name: "Технические сигналы и неопределённость"
+  labels: [BROKEN_SQL, SYNTAX_BROKEN, INSUFFICIENT_CONTEXT, AUDIT_UNCERTAIN, UNBOUND_PLACEHOLDER, LOGIC_ERROR]
+  prompt_file: "data/audit_groups/group-7-technical-signals.txt"
+  examples_file: "data/audit_groups/group-7-examples.jsonl"
+  rag_source: "quality_rag"
+  priority: 2
+
