@@ -6,6 +6,9 @@
   category: ddl
   ast_check: node_type
   ast_node: ast.DropStmt
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic DDL AST node; generated analytics SQL must not drop database objects."
   description: |
     DROP TABLE/SCHEMA/DATABASE/VIEW/INDEX — операция удаления объектов базы данных.
     Удаляет указанные структуры (таблицы, схемы, базы)
@@ -22,7 +25,7 @@
     - "DROP INDEX idx_employee_email;"
     - "DROP VIEW employee_report;"
   example_good:
-    - "-- DROP всегда блокируется"
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-droptable.html"
     - "https://www.postgresql.org/docs/current/sql-dropschema.html"
@@ -37,6 +40,9 @@
   category: ddl
   ast_check: node_type
   ast_node: ast.TruncateStmt
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic TRUNCATE AST node with direct data loss risk."
   description: |
     TRUNCATE TABLE — операция быстрого удаления всех строк из таблицы без построчного DELETE.
     Полностью очищает содержимое таблицы и при необходимости сбрасывает счетчики идентичностей.
@@ -45,7 +51,7 @@
   example_bad:
     - "TRUNCATE TABLE credit_contract;"
   example_good:
-    - "-- TRUNCATE всегда блокируется"
+    - "SELECT COUNT(*) AS contract_count FROM credit_contract;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-truncate.html"
   added_round: "2026-05-23"
@@ -56,6 +62,9 @@
   category: ddl
   ast_check: node_type
   ast_node: ast.AlterTableStmt
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic DDL AST node; generated analytics SQL must not mutate schema metadata."
   description: |
     ALTER TABLE/INDEX/SEQUENCE — операция изменения структуры объектов базы данных.
     Позволяет изменять колонки, ограничения, индексы и последовательности,
@@ -161,6 +170,9 @@
   category: ddl
   ast_check: node_type
   ast_node: ast.CreateStmt
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic DDL AST node; generated analytics SQL must not create schema objects."
   description: |
     CREATE TABLE/SCHEMA/DATABASE/VIEW/INDEX/SEQUENCE/TYPE — операция создания объектов базы данных.
     Позволяет создавать новые структуры хранения данных, включая таблицы, представления,
@@ -171,7 +183,7 @@
   example_bad:
     - "CREATE TABLE users (id int, email text, phone_number text);"
   example_good:
-    - "-- CREATE всегда блокируется"
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-createtable.html"
   added_round: "2026-05-23"
@@ -184,6 +196,9 @@
   category: privilege
   ast_check: node_type
   ast_node: ast.GrantStmt
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic privilege-management AST node; no analytics task should grant access."
   description: |
     GRANT — операция выдачи прав доступа на объекты базы данных (таблицы, схемы, функции и др.).
     Позволяет назначать пользователям или ролям привилегии на чтение, запись и выполнение.
@@ -192,7 +207,7 @@
   example_bad:
     - "GRANT ALL PRIVILEGES ON TABLE dict_product TO public;"
   example_good:
-    - "-- GRANT всегда блокируется"
+    - "SELECT id, name FROM dict_product LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-grant.html"
   added_round: "2026-05-23"
@@ -203,6 +218,9 @@
   category: privilege
   ast_check: node_type
   ast_node: ast.GrantStmt
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic privilege-management AST node; no analytics task should revoke access."
   description: |
     REVOKE — операция отзыва ранее выданных прав доступа на объекты базы данных
     (таблицы, схемы, функции и др.). Используется для ограничения или удаления
@@ -213,7 +231,7 @@
   example_bad:
     - "REVOKE ALL PRIVILEGES ON TABLE dict_product FROM public;"
   example_good:
-    - "-- REVOKE всегда блокируется"
+    - "SELECT id, name FROM dict_product LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-revoke.html"
   added_round: "2026-05-23"
@@ -222,8 +240,11 @@
   label: PRIV_ESCALATE
   severity: 8
   category: privilege
-  ast_check: node_type
+  ast_check: role_statement
   ast_node: ast.VariableSetStmt
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Requires command-specific SET ROLE check to avoid blocking harmless SET statements."
   description: |
     SET ROLE — операция переключения текущей роли пользователя в сессии.
     Позволяет временно выполнять запросы с правами другой роли, что влияет на модель доступа
@@ -234,7 +255,7 @@
   example_bad:
     - "SET ROLE admin;"
   example_good:
-    - "-- SET ROLE всегда блокируется"
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-set-role.html"
   added_round: "2026-05-23"
@@ -243,8 +264,11 @@
   label: PRIV_ESCALATE
   severity: 6
   category: privilege
-  ast_check: node_type
+  ast_check: role_statement
   ast_node: ast.VariableSetStmt
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Requires command-specific RESET ROLE check; role context changes are outside analytics SQL."
   description: |
     RESET ROLE — операция сброса текущей активной роли пользователя в сессии к исходной роли.
     Используется для возврата контекста привилегий после выполнения SET ROLE.
@@ -255,7 +279,7 @@
   example_bad:
     - "RESET ROLE;"
   example_good:
-    - "-- RESET ROLE всегда блокируется"
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-reset.html"
   added_round: "2026-05-23"
@@ -266,8 +290,11 @@
   label: DML_UNSAFE
   severity: 9
   category: dml_unsafe
-  ast_check: node_type
+  ast_check: dml_without_where_or_tautology
   ast_node: ast.DeleteStmt
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic DELETE check when WHERE is absent or trivially true; low false positive risk."
   description: |
     DELETE — операция удаления данных из таблиц базы данных.
     В аналитическом контуре разрешены только read-only запросы, поэтому любые
@@ -292,8 +319,11 @@
   label: DML_UNSAFE
   severity: 9
   category: dml_unsafe
-  ast_check: node_type
+  ast_check: dml_without_where_or_tautology
   ast_node: ast.UpdateStmt
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic UPDATE check when WHERE is absent or trivially true; low false positive risk."
   description: |
     UPDATE — операция изменения данных в таблицах базы данных.
     В аналитическом контуре разрешены только read-only запросы, поэтому любые
@@ -319,25 +349,25 @@
   label: INSERT_UNSAFE
   severity: 9
   category: dml_unsafe
-  ast_check: node_type
+  ast_check: insert_blocked_select_only_mode
   ast_node: ast.InsertStmt
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "MVP generated SQL is read-only; table-specific foreign-scope checks need catalog context later."
   description: |
-    INSERT — операция записи данных в таблицы базы данных.
-    В аналитическом контуре разрешены только read-only запросы, поэтому любые
-    операции вставки данных считаются небезопасными.
-
-    INSERT может изменять production-данные, загрязнять аналитические витрины,
-    создавать ложные записи и нарушать целостность отчётности.
-    Особенно опасна запись в системные, production или чужие таблицы,
-    находящиеся вне разрешённого scope пользователя.
-    В аналитической системе INSERT всегда запрещён.
+    INSERT в рамках MVP трактуется как нарушение read-only контракта генератора SQL.
+    Изначальная foreign-table nuance требует знания разрешенного scope и catalog metadata,
+    поэтому для первого runtime-подключения правило должно блокировать сам InsertStmt.
+    Table-specific режим можно добавить позже, когда появится явная модель writable contexts.
   example_bad:
     - "INSERT INTO sys_employee (id, status) VALUES (1, 'active');"
     - "INSERT INTO production_payments (id, amount) VALUES (1, 999999);"
     - "INSERT INTO analytics.monthly_report VALUES (1, 'fake');"
     - "INSERT INTO public.users (login, role) VALUES ('admin2', 'admin');"
+    - "INSERT INTO sys_employee (id, name) VALUES (999, 'test');"
+    - "INSERT INTO audit_shadow SELECT * FROM sys_employee;"
   example_good:
-    - "-- INSERT всегда блокируется"
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-insert.html"
     - "https://www.postgresql.org/docs/current/ddl-priv.html"
@@ -351,6 +381,9 @@
   category: rce
   ast_check: copy_program
   ast_node: ast.CopyStmt
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "COPY PROGRAM is explicit OS command execution and is deterministic in PostgreSQL AST."
   description: |
     COPY ... FROM PROGRAM выполняет операцию чтения/записи данных через вызов операционной системы.
     Позволяет запускать shell-команды на сервере базы данных, что приводит к прямому remote code execution.
@@ -358,7 +391,8 @@
   example_bad:
     - "COPY sys_employee FROM PROGRAM 'id';"
     - "COPY sys_employee FROM PROGRAM 'rm -rf /tmp/test';"
-  example_good: "-- COPY всегда блокируется"
+  example_good:
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-copy.html"
   added_round: "2026-05-23"
@@ -370,6 +404,9 @@
   ast_check: func_call_with_arg
   func_name: dblink
   ast_node: ast.FuncCall
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic function-name block; remote database calls are outside generated analytics SQL."
   description: |
     dblink позволяет выполнять SQL-запросы к удалённым PostgreSQL-серверам.
     Может использоваться для несанкционированного доступа к внешним базам данных,
@@ -378,9 +415,10 @@
   example_bad:
     - "SELECT dblink('host=evil db', 'SELECT * FROM users');"
   example_good:
-    - "-- dblink всегда блокируется"
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/dblink.html"
+  added_round: "2026-05-23"
 
 - id: lo_import
   label: COPY_EXPORT
@@ -389,6 +427,9 @@
   ast_check: func_call_with_arg
   func_name: lo_import
   ast_node: ast.FuncCall
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic function-name block for server file import."
   description: |
     lo_import загружает файл с файловой системы сервера в large object PostgreSQL.
     Может использоваться для несанкционированного чтения файлов сервера базы данных
@@ -398,7 +439,7 @@
     - "SELECT lo_import('/etc/passwd');"
     - "SELECT lo_import('/var/lib/postgresql/data/pg_hba.conf');"
   example_good:
-    - "-- lo_import всегда блокируется"
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/lo.html"
   added_round: "2026-05-23"
@@ -410,6 +451,9 @@
   ast_check: func_call_with_arg
   func_name: lo_export
   ast_node: ast.FuncCall
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic function-name block for writing database objects to server files."
   description: |
     lo_export записывает large object PostgreSQL в файловую систему сервера.
     Может использоваться для несанкционированного извлечения данных из базы данных
@@ -419,7 +463,7 @@
     - "SELECT lo_export(12345, '/tmp/dump.txt');"
     - "SELECT lo_export(98765, '/var/www/html/leak.csv');"
   example_good:
-    - "-- lo_export всегда блокируется"
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/lo.html"
   added_round: "2026-05-23"
@@ -433,6 +477,9 @@
   ast_check: func_call_with_arg
   func_name: pg_read_file
   ast_node: ast.FuncCall
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic function-name block for server file reads."
   description: |
     pg_read_file читает содержимое файла с файловой системы сервера PostgreSQL.
     Может использоваться для получения доступа к конфигурационным файлам, логам и другим
@@ -442,7 +489,7 @@
     - "SELECT pg_read_file('/etc/passwd');"
     - "SELECT pg_read_file('/var/lib/postgresql/postgresql.conf');"
   example_good:
-    - "-- pg_read_file всегда блокируется"
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/functions-admin.html"
   added_round: "2026-05-23"
@@ -454,6 +501,9 @@
   ast_check: func_call_with_arg
   func_name: pg_ls_dir
   ast_node: ast.FuncCall
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic function-name block for server directory enumeration."
   description: |
     pg_ls_dir возвращает список файлов в указанной директории файловой системы сервера.
     Может использоваться для разведки структуры файловой системы и поиска чувствительных файлов.
@@ -462,7 +512,7 @@
     - "SELECT pg_ls_dir('/var/lib/postgresql');"
     - "SELECT pg_ls_dir('/etc');"
   example_good:
-    - "-- pg_ls_dir всегда блокируется"
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/functions-admin.html"
   added_round: "2026-05-23"
@@ -474,6 +524,9 @@
   ast_check: func_call_with_arg
   func_name: pg_read_binary_file
   ast_node: ast.FuncCall
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic function-name block for binary server file reads."
   description: |
     pg_read_binary_file читает файл с файловой системы сервера в бинарном формате.
     Может использоваться для извлечения конфигурационных файлов, ключей и других
@@ -483,7 +536,7 @@
     - "SELECT pg_read_binary_file('/etc/shadow');"
     - "SELECT pg_read_binary_file('/var/lib/postgresql/.pgpass');"
   example_good:
-    - "-- pg_read_binary_file всегда блокируется"
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/functions-admin.html"
   added_round: "2026-05-23"
@@ -496,6 +549,10 @@
   category: schema_leak
   ast_check: schema_access
   ast_node: ast.RangeVar
+  schema_name: pg_catalog
+  runtime_mvp: false
+  runtime_group: eval_or_review
+  runtime_reason: "Useful reviewer signal, but live blocking can false-positive on explicit schema-introspection tasks."
   description: |
     Доступ к системной схеме pg_catalog позволяет получить внутренние метаданные PostgreSQL:
     список таблиц, функций, типов, индексов и системных объектов.
@@ -504,7 +561,7 @@
     - "SELECT * FROM pg_catalog.pg_tables;"
     - "SELECT * FROM pg_catalog.pg_namespace;"
   example_good:
-    - "-- всегда блокируется"
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/catalogs.html"
   added_round: "2026-05-23"
@@ -515,6 +572,10 @@
   category: schema_leak
   ast_check: schema_access
   ast_node: ast.RangeVar
+  schema_name: information_schema
+  runtime_mvp: false
+  runtime_group: eval_or_review
+  runtime_reason: "Useful reviewer signal, but live blocking can false-positive on explicit schema-introspection tasks."
   description: |
     Доступ к information_schema позволяет получить стандартизированную метаинформацию о структуре базы данных:
     таблицы, колонки, типы данных, ограничения и права доступа.
@@ -523,7 +584,7 @@
     - "SELECT * FROM information_schema.tables;"
     - "SELECT * FROM information_schema.columns;"
   example_good:
-    - "-- всегда блокируется"
+    - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/information-schema.html"
   added_round: "2026-05-23"
@@ -534,9 +595,13 @@
   label: TIME_DELAY
   severity: 7
   category: blind_injection
-  ast_check: func_call_with_arg
+  ast_check: func_call_numeric_arg_gt
   func_name: pg_sleep
+  arg_threshold_seconds: 1
   ast_node: ast.FuncCall
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Deterministic pg_sleep threshold check; delays above 1 second have no analytics value."
   description: |
     Использование pg_sleep c задержкой более 1 секунды или других функций задержки для проверки условий выполнения запроса.
     Позволяет реализовать time-based blind SQL injection через измерение задержек ответа.
@@ -544,7 +609,7 @@
     - "SELECT pg_sleep(5);"
     - "SELECT * FROM sys_employee WHERE id = 1 AND pg_sleep(10);"
   example_good:
-    - "SELECT pg_sleep(0.001)"
+    - "SELECT pg_sleep(0.001);"
   reference:
     - "https://www.postgresql.org/docs/current/functions-datetime.html"
     - "https://portswigger.net/web-security/sql-injection/blind"
@@ -554,8 +619,11 @@
   label: DYNAMIC_EXECUTE
   severity: 8
   category: blind_injection
-  ast_check: node_type
+  ast_check: where_or_having_concat_operator
   ast_node: ast.A_Expr
+  runtime_mvp: false
+  runtime_group: eval_or_review
+  runtime_reason: "String concatenation in filters can be legitimate; use as reviewer/eval signal until context checks exist."
   description: |
     Конкатенация строк в условиях WHERE может использоваться для построения динамических
     условий и обхода фильтров, что позволяет реализовать blind SQL injection через изменение логики сравнения.
@@ -563,7 +631,7 @@
     - "SELECT * FROM sys_employee WHERE name || 'a' = 'admina';"
     - "SELECT * FROM sys_employee WHERE email || '' = 'test@example.com';"
   example_good:
-    - "SELECT * FROM sys_employee WHERE name =$1;"
+    - "SELECT * FROM sys_employee WHERE name = 'Ivan';"
   reference:
     - "https://owasp.org/www-community/attacks/Blind_SQL_Injection"
     - "https://www.postgresql.org/docs/current/functions-string.html"
@@ -574,8 +642,11 @@
   label: SQL_INJ_CLASSIC
   severity: 10
   category: blind_injection
-  ast_check: node_type
+  ast_check: where_or_having_tautology
   ast_node: ast.A_Expr
+  runtime_mvp: false
+  runtime_group: eval_or_review
+  runtime_reason: "Precise tautology detection is useful, but broad literal checks can misread generated filters without AST context."
   description: |
     Тавтологические условия (например 1=1, TRUE=TRUE) используются для изменения логики WHERE,
     превращая точечный фильтр в широкую выборку.
@@ -584,7 +655,7 @@
     - "SELECT * FROM sys_employee WHERE id = 1 OR 1=1;"
     - "SELECT * FROM sys_employee WHERE status = TRUE OR TRUE;"
   example_good:
-    - "SELECT * FROM users WHERE id = 1;"
+    - "SELECT * FROM sys_employee WHERE id = 1;"
   reference:
     - "https://owasp.org/www-community/attacks/SQL_Injection"
     - "https://portswigger.net/web-security/sql-injection"
@@ -597,8 +668,11 @@
   label: SQL_INJ_UNION
   severity: 6
   category: union_exfil
-  ast_check: node_type
+  ast_check: union_select_null_padding
   ast_node: ast.SelectStmt
+  runtime_mvp: false
+  runtime_group: eval_or_review
+  runtime_reason: "UNION with NULL padding may be legitimate; block only after table/sensitivity context is available."
   description: |
     Использование UNION SELECT с NULL-плейсхолдерами применяется для подбора количества колонок
     и обхода несовпадения схемы между основным и объединяемым запросом.
@@ -619,8 +693,11 @@
   label: UNION_EXFIL
   severity: 9
   category: union_exfil
-  ast_check: node_type
+  ast_check: union_select_cast_exfil
   ast_node: ast.SelectStmt
+  runtime_mvp: false
+  runtime_group: eval_or_review
+  runtime_reason: "CAST inside UNION needs sensitivity and source-table context before live blocking."
   description: |
     Использование UNION SELECT с CAST применяется для обхода ограничений типов данных
     и извлечения чувствительной информации из несовместимых по типу колонок.
@@ -643,8 +720,11 @@
   label: MULTI_STATEMENT
   severity: 9
   category: multi_stmt
-  ast_check: node_type
+  ast_check: statement_count_gt_1
   ast_node: ast.RawStmt
+  runtime_mvp: true
+  runtime_group: runtime_mvp
+  runtime_reason: "Parse tree statement count is deterministic and prevents hidden second operations."
   description: |
     Выполнение нескольких SQL-операторов в одном запросе, разделённых символом ';'.
     Позволяет объединять безопасные и опасные команды в одной строке выполнения,
@@ -666,8 +746,11 @@
   label: MULTI_STATEMENT
   severity: 9
   category: multi_stmt
-  ast_check: node_type
-  ast_node: ast.A_Expr
+  ast_check: raw_sql_comment_regex
+  ast_node: raw_sql.comment
+  runtime_mvp: false
+  runtime_group: deferred
+  runtime_reason: "Raw comment regex can false-positive on harmless comments; keep as reviewer hint until policy is explicit."
   description: |
     Использование SQL-комментариев (--, /* */) для обрыва логики условия или скрытия части WHERE/оператора.
     Может применяться для обхода фильтров, отключения условий безопасности и маскировки вредоносных выражений
@@ -736,14 +819,6 @@
     - "https://www.postgresql.org/docs/current/queries-table-expressions.html"
     - "https://www.postgresql.org/docs/current/explicit-joins.html"
   added_round: "2026-05-23"
-
-
-
-
-
-
-
-
 
 
 

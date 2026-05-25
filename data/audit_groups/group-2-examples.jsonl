@@ -1,0 +1,70 @@
+{
+  "id": "g2_001",
+  "sql": "DELETE FROM users",
+  "expected_labels": ["DML_NO_WHERE"],
+  "is_positive": true,
+  "reason": "DELETE без WHERE — массовое удаление данных"
+}
+{
+  "id": "g2_002",
+  "sql": "TRUNCATE TABLE sessions",
+  "expected_labels": ["TRUNCATE"],
+  "is_positive": true,
+  "reason": "TRUNCATE — полная очистка таблицы"
+}
+{
+  "id": "g2_003",
+  "sql": "DROP TABLE users",
+  "expected_labels": ["DDL_FORBIDDEN"],
+  "is_positive": true,
+  "reason": "DDL операция удаления таблицы"
+}
+{
+  "id": "g2_004",
+  "sql": "COPY users TO '/tmp/users.csv'",
+  "expected_labels": ["COPY_EXPORT"],
+  "is_positive": true,
+  "reason": "экспорт данных через COPY"
+}
+{
+  "id": "g2_005",
+  "sql": "INSERT INTO users SELECT * FROM external_table",
+  "expected_labels": ["INSERT_UNSAFE"],
+  "is_positive": true,
+  "reason": "небезопасный INSERT из внешнего источника"
+}
+{
+  "id": "g2_006",
+  "sql": "SELECT * FROM users",
+  "expected_labels": ["SELECT_STAR"],
+  "is_positive": false,
+  "reason": "только SELECT *, нет DML/DDL операций"
+}
+{
+  "id": "g2_007",
+  "sql": "SELECT * FROM users WHERE id = 1 OR 1=1",
+  "expected_labels": ["SQL_INJ_CLASSIC", "TAUTOLOGY"],
+  "is_positive": false,
+  "reason": "похоже на опасный запрос, но это SQL injection, не DML/DDL"
+}
+{
+  "id": "g2_008",
+  "sql": "SELECT * FROM users WHERE id = 1 UNION SELECT password FROM admin",
+  "expected_labels": ["SQL_INJ_UNION", "UNION_EXFIL"],
+  "is_positive": false,
+  "reason": "UNION-based injection, не операции изменения данных"
+}
+{
+  "id": "g2_009",
+  "sql": "SELECT pg_sleep(10)",
+  "expected_labels": ["SQL_INJ_TIME", "TIME_DELAY"],
+  "is_positive": false,
+  "reason": "time-based injection, но нет DML/DDL действий"
+}
+{
+  "id": "g2_010",
+  "sql": "SELECT * FROM users WHERE id = 1; SELECT pg_sleep(5);",
+  "expected_labels": ["SQL_INJ_TIME", "MULTI_STATEMENT"],
+  "is_positive": false,
+  "reason": "multi-statement + time-based, но не DML/DDL разрушение данных"
+}
