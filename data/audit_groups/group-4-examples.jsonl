@@ -1,0 +1,70 @@
+{
+  "id": "g4_001",
+  "sql": "SELECT username FROM user_profiles",
+  "expected_labels": ["HALLUCINATED_TABLE"],
+  "is_positive": true,
+  "reason": "таблица user_profiles отсутствует в схеме"
+}
+{
+  "id": "g4_002",
+  "sql": "SELECT users.phone_number FROM users",
+  "expected_labels": ["HALLUCINATED_COLUMN"],
+  "is_positive": true,
+  "reason": "колонка phone_number не существует в таблице users"
+}
+{
+  "id": "g4_003",
+  "sql": "SELECT * FROM orders o JOIN users u ON o.uuid = u.account_id",
+  "expected_labels": ["WRONG_JOIN_PATH", "SELECT_STAR"],
+  "is_positive": true,
+  "reason": "JOIN выполнен по несвязанным ключам"
+}
+{
+  "id": "g4_004",
+  "sql": "SELECT * FROM accounts WHERE scope = current_user",
+  "expected_labels": ["AMBIGUOUS_USER_SCOPE", "SELECT_STAR"],
+  "is_positive": true,
+  "reason": "неопределённый пользовательский scope"
+}
+{
+  "id": "g4_005",
+  "sql": "SELECT invalid_status FROM payments",
+  "expected_labels": ["INVALID_COLUMN"],
+  "is_positive": true,
+  "reason": "используется невалидная колонка invalid_status"
+}
+{
+  "id": "g4_006",
+  "sql": "SELECT * FROM users",
+  "expected_labels": ["SELECT_STAR"],
+  "is_positive": false,
+  "reason": "wildcard select без ошибок схемы"
+}
+{
+  "id": "g4_007",
+  "sql": "SELECT * FROM users WHERE id = 1 OR 1=1",
+  "expected_labels": ["SQL_INJ_CLASSIC"],
+  "is_positive": false,
+  "reason": "SQL injection, а не ошибка схемы"
+}
+{
+  "id": "g4_008",
+  "sql": "DELETE FROM users",
+  "expected_labels": ["DML_NO_WHERE"],
+  "is_positive": false,
+  "reason": "опасная DML операция, но схема корректна"
+}
+{
+  "id": "g4_009",
+  "sql": "SELECT email, phone FROM sys_employee",
+  "expected_labels": ["DIRECT_SENSITIVE"],
+  "is_positive": false,
+  "reason": "раскрытие PII, а не галлюцинация схемы"
+}
+{
+  "id": "g4_010",
+  "sql": "SELECT * FROM orders JOIN users ON orders.user_id = users.id",
+  "expected_labels": ["SELECT_STAR"],
+  "is_positive": false,
+  "reason": "корректный JOIN без ошибок схемы"
+}
