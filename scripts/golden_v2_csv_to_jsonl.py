@@ -9,6 +9,13 @@ import json
 from pathlib import Path
 from typing import Any
 
+try:
+    from pglast.parser import parse_sql as _pglast_parse_sql
+    from pglast.parser import ParseError as _PglastParseError
+except Exception:  # pragma: no cover - pglast is optional
+    _pglast_parse_sql = None
+    _PglastParseError = Exception
+
 CLASS_BY_ID = {
     1: "select_simple",
     2: "select_medium",
@@ -24,7 +31,24 @@ CLASS_BY_ID = {
     12: "pii_overfetch",
 }
 
+# Classes where parse failure of sql_candidate is expected (adversarial)
+INTENTIONAL_PARSE_FAIL_CLASSES = {7, 10}
+
 REQUIRED = {"id", "class_id", "task", "sql_candidate"}
+
+
+def _parse_status_for(sql: str, class_id: int) -> str:
+    if not sql or not sql.strip():
+        return "empty"
+    if _pglast_parse_sql is None:
+        return "parsed"  # pglast unavailable; trust the data
+    try:
+        _pglast_parse_sql(sql)
+        return "parsed"
+    except _PglastParseError:
+        if class_id in INTENTIONAL_PARSE_FAIL_CLASSES:
+            return "unparseable_intentional"
+        return "unparseable_error"
 
 
 def convert(csv_path: Path, out_path: Path, strict: bool = False) -> dict[str, Any]:
@@ -63,8 +87,11 @@ def _row_errors(row: dict[str, str]) -> list[str]:
     class_id = _int(row.get("class_id"))
     if class_id not in CLASS_BY_ID:
         errors.append("unknown class_id " + str(row.get("class_id")))
-    if not _json_list(row.get("schema_scope"), default=[]):
-        errors.append("schema_scope must be a JSON array with at least one item")
+    # schema_scope must be a JSON array; empty is allowed for synthetic/CTE-only
+    # cases (e.g. recursive CTE producing numbers without any real table).
+    scope_raw = (row.get("schema_scope") or "").strip()
+    if scope_raw and _json_list(scope_raw, default=None) is None:
+        errors.append("schema_scope must be a JSON array")
     if _json_list(row.get("risk_labels"), default=None) is None:
         errors.append("risk_labels must be a JSON array")
     return errors
@@ -105,7 +132,7 @@ def _build_item(row: dict[str, str]) -> dict[str, Any]:
         "taxonomy_version": "v2.0",
         "judge_label_version": "v2.0",
         "model_source": "golden_v2_partial",
-        "parse_status": "parsed",
+        "parse_status": _parse_status_for(sql, class_id),
         "source_seed_id": "golden_v2:" + (row.get("id") or "").strip(),
         "golden_category_id": class_id,
         "golden_oracle_type": "reference_sql" if safe_rewrite else "refusal_only",
