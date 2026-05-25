@@ -12,13 +12,20 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+import json
 import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 _logger = logging.getLogger("app.api")
+TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 @asynccontextmanager
@@ -172,6 +179,39 @@ def health() -> dict[str, Any]:
     return {"status": "ok", **info, "rag": rag_adapter.get_rag_diagnostics()}
 
 
+@app.get("/prompts/candidates", response_class=HTMLResponse)
+def prompt_candidates_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "prompt_candidates.html",
+        {
+            "active_section": "prompt-candidates",
+            "audits_enabled": True,
+        },
+    )
+
+
+@app.get("/web/api/prompt-candidates")
+def prompt_candidates_api(limit: int = 500) -> dict[str, Any]:
+    safe_limit = max(1, min(int(limit or 500), 2000))
+    rows = _prompt_candidate_rows(safe_limit)
+    series: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        key = str(row.get("prompt_key") or "unknown")
+        series.setdefault(key, []).append(
+            {
+                "time": row.get("time"),
+                "quality_score": row.get("quality_score"),
+                "selected": row.get("selected"),
+                "trace_id": row.get("trace_id"),
+                "temperature": row.get("temperature"),
+            }
+        )
+    for values in series.values():
+        values.sort(key=lambda item: str(item.get("time") or ""))
+    return {"rows": rows, "prompt_series": series, "total": len(rows)}
+
+
 @app.post("/run")
 async def run(req: RunRequest) -> dict[str, Any]:
     """
@@ -203,3 +243,164 @@ async def run(req: RunRequest) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=provider_error_message(exc)) from exc
     except PipelineTimeout as exc:
         raise HTTPException(status_code=504, detail=str(exc)) from exc
+
+
+def _prompt_candidate_rows(limit: int) -> list[dict[str, Any]]:
+    trace_dir = Path(os.environ.get("TRACES_DIR", "data/traces"))
+    if not trace_dir.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    for path in sorted(trace_dir.glob("*.json"), key=_mtime, reverse=True):
+        payload = _read_trace(path)
+        if not isinstance(payload, dict):
+            continue
+        trace_id = str(payload.get("request_id") or path.stem)
+        task = str(payload.get("task") or "")
+        source = _candidate_source(payload)
+        approved = bool((payload.get("result") or {}).get("approved"))
+        for event in payload.get("events", []) or []:
+            if not isinstance(event, dict) or event.get("node") != "generate":
+                continue
+            details = event.get("details") if isinstance(event.get("details"), dict) else {}
+            outputs = event.get("outputs") if isinstance(event.get("outputs"), dict) else {}
+            iteration = int(details.get("iteration") or outputs.get("iteration") or 1)
+            selected_index = _int_or_none(details.get("selected_index", outputs.get("selected_index")))
+            candidates = _event_candidates(details)
+            for idx, cand in enumerate(candidates):
+                meta = _candidate_prompt_meta(cand, details)
+                selected = _candidate_selected(cand, idx, selected_index)
+                score = _candidate_quality(cand, selected, approved)
+                prompt_key = _prompt_key(meta)
+                rows.append(
+                    {
+                        "row_id": trace_id + ":" + str(iteration) + ":" + str(idx),
+                        "trace_id": trace_id,
+                        "trace_url": "/runs/" + trace_id,
+                        "time": str(event.get("started_at") or payload.get("started_at") or ""),
+                        "task": task,
+                        "source_type": source["type"],
+                        "source_id": source["id"],
+                        "case_id": source["case_id"],
+                        "iteration": iteration,
+                        "candidate_index": cand.get("candidate_index", idx),
+                        "selected": selected,
+                        "temperature": cand.get("temperature"),
+                        "model": cand.get("model") or details.get("model") or "",
+                        "backend": cand.get("backend") or details.get("backend") or "",
+                        "prompt_key": prompt_key,
+                        "prompt_id": meta.get("prompt_id") or "",
+                        "prompt_type": meta.get("prompt_type") or "",
+                        "prompt_version": meta.get("prompt_version"),
+                        "prompt_sha256": meta.get("prompt_sha256") or "",
+                        "prompt_source": meta.get("prompt_source") or "",
+                        "prompt_system": cand.get("prompt_system") or details.get("prompt_system") or "",
+                        "prompt_user": cand.get("prompt_user") or details.get("prompt_user") or "",
+                        "sql": cand.get("sql") or cand.get("response") or "",
+                        "quality_score": score,
+                    }
+                )
+                if len(rows) >= limit:
+                    return rows
+    return rows
+
+
+def _mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _read_trace(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _event_candidates(details: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = details.get("candidates")
+    if isinstance(raw, list) and raw:
+        return [item for item in raw if isinstance(item, dict)]
+    sql_items = details.get("response_sql")
+    if not isinstance(sql_items, list):
+        return []
+    temperatures = details.get("temperature_schedule") if isinstance(details.get("temperature_schedule"), list) else []
+    out: list[dict[str, Any]] = []
+    for idx, sql in enumerate(sql_items):
+        out.append(
+            {
+                "candidate_index": idx,
+                "sql": sql,
+                "temperature": temperatures[idx] if idx < len(temperatures) else details.get("temperature"),
+                "model": details.get("model"),
+                "backend": details.get("backend"),
+            }
+        )
+    return out
+
+
+def _candidate_prompt_meta(cand: dict[str, Any], details: dict[str, Any]) -> dict[str, Any]:
+    meta = cand.get("prompt_meta") if isinstance(cand.get("prompt_meta"), dict) else {}
+    if not meta:
+        meta = details.get("prompt_meta") if isinstance(details.get("prompt_meta"), dict) else {}
+    return {
+        "prompt_id": meta.get("prompt_id") or cand.get("prompt_id") or details.get("prompt_id"),
+        "prompt_type": meta.get("prompt_type") or cand.get("prompt_type") or details.get("prompt_type"),
+        "prompt_version": meta.get("prompt_version") or cand.get("prompt_version") or details.get("prompt_version"),
+        "prompt_sha256": meta.get("prompt_sha256") or cand.get("prompt_sha256") or details.get("prompt_sha256"),
+        "prompt_source": meta.get("prompt_source") or cand.get("prompt_source") or details.get("prompt_source"),
+    }
+
+
+def _candidate_selected(cand: dict[str, Any], idx: int, selected_index: int | None) -> bool:
+    selected = cand.get("selected_by_selector", cand.get("selected"))
+    if selected is not None:
+        return bool(selected)
+    return selected_index is not None and idx == selected_index
+
+
+def _candidate_quality(cand: dict[str, Any], selected: bool, approved: bool) -> int:
+    score_data = cand.get("selector_score") if isinstance(cand.get("selector_score"), dict) else {}
+    labels = score_data.get("labels") if isinstance(score_data.get("labels"), list) else []
+    score = 65
+    if selected:
+        score += 18
+    if approved:
+        score += 12
+    if score_data.get("broken"):
+        score = min(score, 25)
+    score -= min(len(labels) * 8, 32)
+    return max(0, min(100, int(score)))
+
+
+def _prompt_key(meta: dict[str, Any]) -> str:
+    prompt_id = str(meta.get("prompt_id") or meta.get("prompt_type") or "unknown")
+    version = meta.get("prompt_version")
+    if version is not None and version != "":
+        return prompt_id + "@v" + str(version)
+    sha = str(meta.get("prompt_sha256") or "")
+    return prompt_id + "@" + (sha[:10] if sha else "legacy")
+
+
+def _candidate_source(payload: dict[str, Any]) -> dict[str, str]:
+    meta = payload.get("result")
+    meta = meta.get("metadata") if isinstance(meta, dict) and isinstance(meta.get("metadata"), dict) else {}
+    batch_id = str(
+        meta.get("benchmark_run_id")
+        or meta.get("batch_run_id")
+        or payload.get("benchmark_run_id")
+        or payload.get("batch_run_id")
+        or ""
+    )
+    case_id = str(meta.get("case_id") or payload.get("case_id") or "")
+    if batch_id or case_id:
+        return {"type": "batch", "id": batch_id or "batch", "case_id": case_id}
+    return {"type": "single request", "id": str(payload.get("request_id") or ""), "case_id": ""}
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

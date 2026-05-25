@@ -86,12 +86,12 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _generator_temperature() -> float:
-    raw = os.environ.get("LLM_GENERATOR_TEMPERATURE", "0.5").strip()
+    raw = os.environ.get("LLM_GENERATOR_TEMPERATURE", "0.3").strip()
     try:
         value = float(raw)
     except ValueError:
-        return 0.5
-    return value if math.isfinite(value) else 0.5
+        return 0.3
+    return value if math.isfinite(value) else 0.3
 
 
 def _generator_temperatures(multi: bool = True) -> tuple[list[float], dict[str, str] | None]:
@@ -102,7 +102,7 @@ def _generator_temperatures(multi: bool = True) -> tuple[list[float], dict[str, 
     fallback = _generator_temperature()
     raw = os.environ.get("LLM_GENERATOR_TEMPERATURES", "").strip()
     if not raw:
-        return [fallback, fallback], None
+        return [0.3, 0.6], None
 
     values: list[float] = []
     error = ""

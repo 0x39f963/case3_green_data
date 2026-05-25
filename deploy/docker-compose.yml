@@ -1,0 +1,257 @@
+name: case3bot
+
+# Сборка из восьми сервисов. Шесть были запланированы в исходном ТЗ:
+#   postgres        - база данных GreenData
+#   rag-init        - одноразовая сборка FAISS-индексов памяти Марины
+#   rag-init-v2     - одноразовая загрузка table_knowledge_v2 в benchmark PG
+#   app             - FastAPI с эндпоинтом /run и /health
+#   ui              - Streamlit-чат для аналитика
+#   eval            - одноразовый прогон датасета оценки (Role A)
+#   local-llm-proxy - локальная OpenAI-совместимая модель (Ollama по умолчанию)
+# Восьмой сервис добавлен по запросу команды:
+#   trace-viewer    - отдельный HTML-просмотрщик истории трасс на порту 8502
+#
+# Профили позволяют поднимать только нужное:
+#   docker compose up -d postgres app ui trace-viewer
+#   docker compose --profile init up rag-init
+#   docker compose --profile init up rag-init-v2
+#   docker compose --profile eval run --rm eval
+#   LLM_MODE=prod_demo docker compose up -d
+#   LLM_MODE=local_openai docker compose --profile local-llm up -d
+
+services:
+
+  postgres:
+    image: postgres:16
+    container_name: case3_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-demo_db}
+      POSTGRES_USER: ${POSTGRES_USER:-demo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-demo}
+    ports:
+      - "${POSTGRES_PORT:-15433}:5432"
+    volumes:
+      # Том с данными, чтобы не терять схему между перезапусками.
+      - pg_data:/var/lib/postgresql/data
+      # Postgres выполняет все *.sql из каталога при первом старте.
+      # 01-schema.sql создает схему, 02-audit-role.sql добавляет audit_ro.
+      - ./postgres-init/:/docker-entrypoint-initdb.d/:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-demo} -d ${POSTGRES_DB:-demo_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  rag-init:
+    build:
+      # Контекст сборки - корень репозитория, чтобы Dockerfile видел и
+      # requirements.txt, и папку TASK-3. Сам Dockerfile лежит в deploy/.
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: case3_app:latest
+    container_name: case3_rag_init
+    profiles: ["init"]
+    environment:
+      # Куда складывать модель эмбеддингов. Том общий между rag-init и app,
+      # чтобы холодный старт случился один раз.
+      SENTENCE_TRANSFORMERS_HOME: /app/data/model_cache
+      HF_HOME: /app/data/model_cache
+    volumes:
+      # Прокидываем индексы и кеш в общий том - app потом читает их read-only.
+      - rag_indices:/app/TASK-3/marina-case3-rag/rag_pipeline/indices
+      - schema_data:/app/TASK-3/marina-case3-rag
+      - model_cache:/app/data/model_cache
+    working_dir: /app/TASK-3/marina-case3-rag
+    command: >
+      bash -lc "python rag_pipeline/schema_parser.py
+      && python rag_pipeline/build_indices.py"
+
+  rag-init-v2:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: case3_app:latest
+    container_name: case3_rag_init_v2
+    profiles: ["init"]
+    environment:
+      SENTENCE_TRANSFORMERS_HOME: /app/data/model_cache
+      HF_HOME: /app/data/model_cache
+      # benchmark_pg поднимается отдельным deploy/benchmark-compose.yml.
+      BENCHMARK_DSN: ${BENCHMARK_DSN:-postgresql://bench:bench@host.docker.internal:15434/bench}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - model_cache:/app/data/model_cache
+      - ../data/rag/v2:/app/data/rag/v2:ro
+    command: ["python", "scripts/build_table_knowledge_v2.py", "--force"]
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: case3_app:latest
+    container_name: case3_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ../.env
+      - benchmark.env
+    environment:
+      SENTENCE_TRANSFORMERS_HOME: /app/data/model_cache
+      HF_HOME: /app/data/model_cache
+      TRACES_DIR: /app/data/traces
+      WEB_CHAT_DIR: /app/data/web_chats
+      LLM_GENERATOR_TEMPERATURES: "0.3,0.6"
+      LLM_CALL_TIMEOUT_SEC: ${LLM_CALL_TIMEOUT_SEC:-300}
+      LATENCY_SOFT_SEC: ${LATENCY_SOFT_SEC:-300}
+      LATENCY_HARD_SEC: ${LATENCY_HARD_SEC:-600}
+      LOCAL_LLM_USE_NATIVE_OLLAMA: ${LOCAL_LLM_USE_NATIVE_OLLAMA:-true}
+      # Inside Docker use service names on the single case3bot_default network.
+      LOCAL_LLM_BASE_URL: ${APP_LOCAL_LLM_BASE_URL:-http://local-llm-proxy:11434/v1}
+      POSTGRES_DSN: postgresql://${POSTGRES_USER:-demo}:${POSTGRES_PASSWORD:-demo}@postgres:5432/${POSTGRES_DB:-demo_db}
+      POSTGRES_AUDIT_DSN: postgresql://audit_ro:${POSTGRES_AUDIT_PASSWORD:-audit_ro_password}@postgres:5432/${POSTGRES_DB:-demo_db}
+      # benchmark_pg is usually started from deploy/benchmark-compose.yml and
+      # published on the host. Pass an explicit DSN so the app container never
+      # falls back to its own 127.0.0.1 when reading benchmark.rag_embeddings.
+      BENCHMARK_DSN: ${BENCHMARK_DSN:-postgresql://bench:bench@host.docker.internal:15434/bench}
+      BENCHMARK_API_URL: ${BENCHMARK_API_URL:-http://127.0.0.1:18081}
+      TABLE_KNOWLEDGE_V2_ENABLED: ${TABLE_KNOWLEDGE_V2_ENABLED:-true}
+      RAG_BRIDGE_BLACKLIST_ROLES: ${RAG_BRIDGE_BLACKLIST_ROLES:-bridge_multiselect}
+      AUDITOR_GROUPED_ENABLED: ${AUDITOR_GROUPED_ENABLED:-false}
+      STAGE_4_ENABLED: ${STAGE_4_ENABLED:-true}
+      STAGE_4_BACKEND: ${STAGE_4_BACKEND:-openrouter-gemini-3.1-flash}
+      PROMPT_CHECK_LLM_ENABLED: ${PROMPT_CHECK_LLM_ENABLED:-true}
+      PROMPT_CHECK_LLM_BACKEND: ${PROMPT_CHECK_LLM_BACKEND:-local_openai}
+      PROMPT_CHECK_LLM_MODEL: ${PROMPT_CHECK_LLM_MODEL:-qwen2.5:0.5b}
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      # Read-only монтирование индексов: код Марины должен только читать их.
+      - rag_indices:/app/TASK-3/marina-case3-rag/rag_pipeline/indices:ro
+      - schema_data:/app/TASK-3/marina-case3-rag:ro
+      - model_cache:/app/data/model_cache
+      # Папка трасс - пишется orchestrator, читается trace-viewer.
+      - traces:/app/data/traces
+      # Папка веб-чатов - серверная история и импорт готовых JSON-прогонов.
+      - web_chats:/app/data/web_chats
+      # Phase 7 — Claude Code / Codex CLI ходят в хостовые auth-директории.
+      # FastAPI контейнер бежит как root, но CLI subprocess'ы понижаются до
+      # appuser, потому что Claude запрещает dangerous-флаг под root/sudo.
+      # Пользователь должен один раз залогиниться `claude login`/`codex login`
+      # на хосте, иначе CLI выдаст auth_required.
+      - ${HOME:-/root}/.claude:/home/appuser/.claude:rw
+      - ${HOME:-/root}/.codex:/home/appuser/.codex:rw
+      - ${HOME:-/root}/.claude.json:/home/appuser/.claude.json:rw
+    # `host.docker.internal` нужен на случай, если local-llm-proxy запущен
+    # на хосте, а не через профиль compose `local-llm`.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  ui:
+    image: case3_app:latest
+    container_name: case3_ui
+    restart: unless-stopped
+    depends_on:
+      - app
+    env_file:
+      - ../.env
+    environment:
+      APP_API_URL: http://app:8000
+      TRACE_VIEWER_URL: ${TRACE_VIEWER_URL:-http://localhost:8502}
+    ports:
+      - "${STREAMLIT_PORT:-8501}:8501"
+    volumes:
+      - traces:/app/data/traces:ro
+    command: >
+      streamlit run app/ui_streamlit.py
+      --server.address=0.0.0.0
+      --server.port=8501
+      --server.headless=true
+
+  trace-viewer:
+    image: case3_app:latest
+    container_name: case3_trace_viewer
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      TRACES_DIR: /app/data/traces
+    ports:
+      - "${TRACE_VIEWER_PORT:-8502}:8502"
+    volumes:
+      - traces:/app/data/traces:ro
+    command: ["uvicorn", "app.trace_viewer:app", "--host", "0.0.0.0", "--port", "8502"]
+
+  eval:
+    image: case3_app:latest
+    container_name: case3_eval
+    profiles: ["eval"]
+    depends_on:
+      - app
+    env_file:
+      - ../.env
+    volumes:
+      - rag_indices:/app/TASK-3/marina-case3-rag/rag_pipeline/indices:ro
+      - schema_data:/app/TASK-3/marina-case3-rag:ro
+      - model_cache:/app/data/model_cache
+      - traces:/app/data/traces
+      - ../data/eval:/app/data/eval:ro
+    command: ["python", "scripts/smoke_pipeline.py"]
+
+  local-llm-proxy:
+    # По умолчанию используем образ Ollama. У нее простая OpenAI-совместимая
+    # ручка на порту 11434/v1, и легко скачивать модели через ollama pull.
+    # Примеры generator-моделей для локальной проверки:
+    #   docker exec -it case3_local_llm ollama pull qwen3.5:9b
+    #   docker exec -it case3_local_llm ollama pull qwen2.5-coder:7b
+    #   docker exec -it case3_local_llm ollama pull qwen3:8b
+    #   docker exec -it case3_local_llm ollama pull qwen2.5:0.5b
+    # Если у заказчика свой бэкенд (vLLM, LM Studio, text-generation-webui) -
+    # переопределяем image и порты, оставляя имя сервиса прежним.
+    image: ollama/ollama:latest
+    container_name: case3_local_llm
+    profiles: ["local-llm"]
+    restart: unless-stopped
+    environment:
+      # Keep only one runner active and unload after requests by default.
+      # The app also sends per-request keep_alive, so qwen3.5:9b does not stay
+      # resident after smoke checks and block the next local model load.
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-0s}
+    gpus:
+      - driver: nvidia
+        count: all
+        capabilities: [gpu]
+    ports:
+      - "11434:11434"
+    volumes:
+      - llm_models:/root/.ollama
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - |
+        ollama serve &
+        sleep 5
+        ollama pull qwen3.5:9b || true
+        ollama pull qwen2.5-coder:7b || true
+        ollama pull qwen3:8b || true
+        ollama pull qwen2.5:0.5b || true
+        wait
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  pg_data:
+  rag_indices:
+  schema_data:
+  model_cache:
+  traces:
+  web_chats:
+  llm_models:

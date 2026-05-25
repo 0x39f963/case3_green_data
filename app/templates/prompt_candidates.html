@@ -1,0 +1,227 @@
+{% extends "_shell.html" %}
+{% block title %}Prompt Candidates - SQL Security Studio{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="/web/assets/web_chat.css">
+<style>
+.prompt-grid-page{display:grid;gap:12px}.prompt-grid-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.prompt-grid-title{display:flex;align-items:center;gap:10px;min-width:0}.prompt-grid-title h1{margin:0;font-size:24px;line-height:1.15}.prompt-grid-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ad-grid-card{overflow:hidden}.ad-grid-toolbar{display:grid;grid-template-columns:minmax(180px,1fr) 160px 160px 130px auto;gap:8px;padding:12px;border-bottom:1px solid var(--border-soft);align-items:end}.ad-grid-wrap{overflow:auto;max-height:calc(100vh - 235px)}.ad-grid{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}.ad-grid th{position:sticky;top:0;z-index:2;background:#f8fafc;color:#64748b;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:700;border-bottom:1px solid var(--border);padding:8px 10px;white-space:nowrap}.ad-grid td{border-bottom:1px solid var(--border-soft);padding:9px 10px;vertical-align:top;color:#334155;background:#fff}.ad-grid tr:hover td{background:#f8fbff}.ad-grid .num{text-align:right}.ad-grid .mono-cell{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px}.winner-mark{display:inline-flex;align-items:center;gap:4px;border:1px solid #bbf7d0;background:#dcfce7;color:#15803d;border-radius:999px;padding:2px 7px;font-size:11px;font-weight:800}.winner-mark svg{width:10px;height:10px}.prompt-open{border:1px solid #c7daff;background:#eaf1ff;color:#1d4ed8;border-radius:6px;padding:4px 7px;font-size:11px;font-weight:700;cursor:pointer}.prompt-open:hover{background:#dbe7ff}.prompt-task{max-width:310px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.quality-pill{display:inline-flex;min-width:44px;justify-content:center;border-radius:999px;padding:2px 7px;font-weight:800}.quality-good{background:#dcfce7;color:#15803d}.quality-mid{background:#fff7e6;color:#a16207}.quality-bad{background:#fff1f2;color:#b91c1c}.prompt-detail-grid{display:grid;gap:12px}.prompt-chart{border:1px solid var(--border);border-radius:8px;background:#fbfcfe;padding:10px}.prompt-chart svg{width:100%;height:150px;display:block}.prompt-chart-empty{color:#64748b;font-size:12px;padding:12px}.prompt-kv{display:grid;grid-template-columns:130px minmax(0,1fr);gap:6px 10px;font-size:12px}.prompt-kv b{color:#64748b}.prompt-pre{margin:0;border:1px solid var(--border-soft);border-radius:7px;background:#fbfcfe;color:#334155;padding:10px;font-size:11.5px;line-height:1.5;white-space:pre-wrap;max-height:38vh;overflow:auto}.drawer-panel.prompt-candidate-drawer{--drawer-w:760px}
+@media (max-width:980px){.ad-grid-toolbar{grid-template-columns:1fr 1fr}.ad-grid-wrap{max-height:none}.prompt-task{max-width:220px}}
+@media (max-width:760px){.prompt-grid-title h1{font-size:20px}.ad-grid-toolbar{grid-template-columns:1fr}.ad-grid th,.ad-grid td{padding:8px 9px}.drawer-panel.prompt-candidate-drawer{width:100vw}}
+</style>
+{% endblock %}
+{% block content %}
+<section class="view chat-view audits-view prompt-grid-page">
+  <div class="card chat-header prompt-grid-header">
+    <div class="prompt-grid-title">
+      <h1 class="chat-header__title">Prompt Candidate ADGrid</h1>
+      <span class="pill pill-blue" id="rowCount">Loading</span>
+    </div>
+    <div class="prompt-grid-actions">
+      <a class="btn" href="/audits/runs">Runs</a>
+      <button class="btn btn-primary" id="refreshGrid" type="button">Refresh</button>
+    </div>
+  </div>
+
+  <section class="card ad-grid-card">
+    <div class="ad-grid-toolbar">
+      <label class="field"><span class="field-label">Search</span><input class="field-input" id="searchInput" placeholder="trace, task, model, prompt"></label>
+      <label class="field"><span class="field-label">Prompt version</span><select class="field-select" id="promptFilter"><option value="">All prompts</option></select></label>
+      <label class="field"><span class="field-label">Source</span><select class="field-select" id="sourceFilter"><option value="">All sources</option><option value="batch">Batch</option><option value="single request">Single request</option></select></label>
+      <label class="field"><span class="field-label">Winner</span><select class="field-select" id="winnerFilter"><option value="">All</option><option value="yes">Winner only</option><option value="no">Non-winners</option></select></label>
+      <div class="field"><span class="field-label">Rows</span><button class="btn" id="clearFilters" type="button">Clear filters</button></div>
+    </div>
+    <div class="ad-grid-wrap">
+      <table class="ad-grid" id="candidateGrid">
+        <thead>
+          <tr>
+            <th>time</th>
+            <th>trace</th>
+            <th>source</th>
+            <th>task</th>
+            <th>cand</th>
+            <th>temp</th>
+            <th>winner</th>
+            <th>model</th>
+            <th>prompt</th>
+            <th>quality</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody><tr><td colspan="11">Loading prompt candidates...</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</section>
+
+<div class="drawer-overlay" id="promptDrawerOverlay"></div>
+<aside class="drawer-panel prompt-candidate-drawer" id="promptDrawer" aria-hidden="true">
+  <div class="drawer-head">
+    <div>
+      <div class="drawer-title" id="drawerTitle">Prompt</div>
+      <div class="drawer-subtitle" id="drawerSubtitle"></div>
+    </div>
+    <button class="drawer-close" id="drawerClose" type="button" aria-label="Close">x</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<script>
+const state = {rows: [], series: {}, filtered: []};
+const els = {
+  body: document.querySelector("#candidateGrid tbody"),
+  rowCount: document.getElementById("rowCount"),
+  search: document.getElementById("searchInput"),
+  prompt: document.getElementById("promptFilter"),
+  source: document.getElementById("sourceFilter"),
+  winner: document.getElementById("winnerFilter"),
+  refresh: document.getElementById("refreshGrid"),
+  clear: document.getElementById("clearFilters"),
+  drawer: document.getElementById("promptDrawer"),
+  overlay: document.getElementById("promptDrawerOverlay"),
+  close: document.getElementById("drawerClose"),
+  title: document.getElementById("drawerTitle"),
+  subtitle: document.getElementById("drawerSubtitle"),
+  drawerBody: document.getElementById("drawerBody"),
+};
+const checkSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+function esc(value){return String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function short(value){const text=String(value||"");return text.length>18?text.slice(0,10)+"..."+text.slice(-5):text;}
+function temp(value){return value===null||value===undefined||value===""?"n/a":Number(value).toFixed(2).replace(/0+$/,"").replace(/\.$/,"");}
+function qualityClass(value){const num=Number(value||0);return num>=80?"quality-good":num>=55?"quality-mid":"quality-bad";}
+function timeLabel(value){return String(value||"").replace("T"," ").replace("+00:00","").slice(0,19);}
+function promptLabel(row){return [row.prompt_id || row.prompt_type || "unknown", row.prompt_version!==null&&row.prompt_version!==undefined&&row.prompt_version!=="" ? "v"+row.prompt_version : "legacy"].join(" "); }
+
+async function loadRows(){
+  const res = await fetch("/web/api/prompt-candidates?limit=1000", {headers: {"Accept": "application/json"}});
+  if(!res.ok) throw new Error("API " + res.status);
+  const data = await res.json();
+  state.rows = Array.isArray(data.rows) ? data.rows : [];
+  state.series = data.prompt_series || {};
+  fillPromptFilter();
+  applyFilters();
+}
+
+function fillPromptFilter(){
+  const current = els.prompt.value;
+  const labels = [...new Set(state.rows.map((row) => row.prompt_key || "unknown"))].sort();
+  els.prompt.innerHTML = '<option value="">All prompts</option>' + labels.map((key) => `<option value="${esc(key)}">${esc(key)}</option>`).join("");
+  if(labels.includes(current)) els.prompt.value = current;
+}
+
+function applyFilters(){
+  const q = els.search.value.trim().toLowerCase();
+  const promptKey = els.prompt.value;
+  const source = els.source.value;
+  const winner = els.winner.value;
+  state.filtered = state.rows.filter((row) => {
+    const hay = [row.trace_id,row.task,row.model,row.backend,row.prompt_id,row.prompt_key,row.source_id,row.case_id].join(" ").toLowerCase();
+    if(q && !hay.includes(q)) return false;
+    if(promptKey && row.prompt_key !== promptKey) return false;
+    if(source && row.source_type !== source) return false;
+    if(winner === "yes" && !row.selected) return false;
+    if(winner === "no" && row.selected) return false;
+    return true;
+  });
+  renderRows();
+}
+
+function renderRows(){
+  els.rowCount.textContent = state.filtered.length + " rows";
+  if(!state.filtered.length){
+    els.body.innerHTML = '<tr><td colspan="11">No prompt candidates found.</td></tr>';
+    return;
+  }
+  els.body.innerHTML = state.filtered.map((row, index) => `
+    <tr data-row-index="${index}">
+      <td class="mono-cell">${esc(timeLabel(row.time))}</td>
+      <td class="mono-cell"><a href="${esc(row.trace_url)}">${esc(short(row.trace_id))}</a></td>
+      <td>${esc(row.source_type)}<div class="case-muted mono-cell">${esc(short(row.source_id || row.case_id || ""))}</div></td>
+      <td><div class="prompt-task" title="${esc(row.task)}">${esc(row.task)}</div></td>
+      <td class="num mono-cell">${esc(row.iteration)}.${esc(row.candidate_index)}</td>
+      <td class="num mono-cell">${esc(temp(row.temperature))}</td>
+      <td>${row.selected ? '<span class="winner-mark">'+checkSvg+' winner</span>' : '<span class="case-muted">candidate</span>'}</td>
+      <td>${esc(row.model || row.backend || "n/a")}</td>
+      <td><button class="prompt-open" type="button" data-open="${index}">${esc(promptLabel(row))}</button><div class="case-muted mono-cell">${esc(short(row.prompt_sha256))}</div></td>
+      <td><span class="quality-pill ${qualityClass(row.quality_score)}">${esc(row.quality_score)}</span></td>
+      <td><button class="btn" type="button" data-open="${index}">Open</button></td>
+    </tr>
+  `).join("");
+  els.body.querySelectorAll("[data-open]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openDrawer(state.filtered[Number(button.dataset.open || 0)]);
+    });
+  });
+  els.body.querySelectorAll("tr[data-row-index]").forEach((rowEl) => {
+    rowEl.addEventListener("click", () => openDrawer(state.filtered[Number(rowEl.dataset.rowIndex || 0)]));
+  });
+}
+
+function openDrawer(row){
+  if(!row) return;
+  els.title.innerHTML = esc(promptLabel(row)) + (row.selected ? ' <span class="winner-mark">'+checkSvg+' winner</span>' : "");
+  els.subtitle.textContent = [row.trace_id, row.source_type, "temp " + temp(row.temperature), row.model || row.backend].filter(Boolean).join(" / ");
+  const series = state.series[row.prompt_key] || [];
+  els.drawerBody.innerHTML = `
+    <div class="prompt-detail-grid">
+      <section class="prompt-chart">
+        <div class="drawer-section-head"><span>Quality over time</span><span>${esc(series.length)} point(s)</span></div>
+        ${renderChart(series)}
+      </section>
+      <section class="drawer-section"><div class="drawer-section-head"><span>Request metadata</span></div><div class="drawer-section-body prompt-kv">
+        <b>Trace</b><a class="mono" href="${esc(row.trace_url)}">${esc(row.trace_id)}</a>
+        <b>Source</b><span>${esc(row.source_type)} ${esc(row.source_id || row.case_id || "")}</span>
+        <b>Candidate</b><span>${esc(row.iteration)}.${esc(row.candidate_index)} / temp ${esc(temp(row.temperature))}</span>
+        <b>Prompt sha</b><span class="mono">${esc(row.prompt_sha256 || "n/a")}</span>
+      </div></section>
+      <section class="drawer-section"><div class="drawer-section-head"><span>System prompt</span></div><div class="drawer-section-body"><pre class="prompt-pre mono">${esc(row.prompt_system || "System prompt text was not recorded.")}</pre></div></section>
+      <section class="drawer-section"><div class="drawer-section-head"><span>User prompt</span></div><div class="drawer-section-body"><pre class="prompt-pre mono">${esc(row.prompt_user || "User prompt text was not recorded.")}</pre></div></section>
+      <section class="drawer-section"><div class="drawer-section-head"><span>Candidate SQL</span></div><div class="drawer-section-body"><pre class="prompt-pre mono">${esc(row.sql || "")}</pre></div></section>
+    </div>`;
+  els.overlay.classList.add("is-open");
+  els.drawer.classList.add("is-open");
+  els.drawer.setAttribute("aria-hidden", "false");
+}
+
+function renderChart(points){
+  if(!points.length) return '<div class="prompt-chart-empty">No quality points yet.</div>';
+  const width = 640, height = 150, pad = 20;
+  const sorted = [...points].sort((a,b) => String(a.time||"").localeCompare(String(b.time||"")));
+  const maxIdx = Math.max(sorted.length - 1, 1);
+  const coords = sorted.map((p, i) => {
+    const x = pad + (width - pad * 2) * (i / maxIdx);
+    const y = height - pad - (height - pad * 2) * (Number(p.quality_score || 0) / 100);
+    return {x, y, p};
+  });
+  const path = coords.map((c, i) => (i ? "L" : "M") + c.x.toFixed(1) + " " + c.y.toFixed(1)).join(" ");
+  const dots = coords.map((c) => `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="${c.p.selected ? 5 : 3.5}" fill="${c.p.selected ? "#16a34a" : "#3b82f6"}"><title>${esc(timeLabel(c.p.time))} / ${esc(c.p.quality_score)} / temp ${esc(temp(c.p.temperature))}</title></circle>`).join("");
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Prompt quality over time">
+    <line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" stroke="#d7dde7"/>
+    <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height-pad}" stroke="#d7dde7"/>
+    <path d="${path}" fill="none" stroke="#1d4ed8" stroke-width="2.5"/>
+    ${dots}
+    <text x="${pad}" y="14" font-size="10" fill="#64748b">100</text>
+    <text x="${pad}" y="${height-5}" font-size="10" fill="#64748b">0</text>
+  </svg>`;
+}
+
+function closeDrawer(){
+  els.overlay.classList.remove("is-open");
+  els.drawer.classList.remove("is-open");
+  els.drawer.setAttribute("aria-hidden", "true");
+}
+
+["input","change"].forEach((name) => {
+  els.search.addEventListener(name, applyFilters);
+  els.prompt.addEventListener(name, applyFilters);
+  els.source.addEventListener(name, applyFilters);
+  els.winner.addEventListener(name, applyFilters);
+});
+els.clear.addEventListener("click", () => {els.search.value="";els.prompt.value="";els.source.value="";els.winner.value="";applyFilters();});
+els.refresh.addEventListener("click", () => loadRows().catch(showError));
+els.close.addEventListener("click", closeDrawer);
+els.overlay.addEventListener("click", closeDrawer);
+function showError(err){els.body.innerHTML = '<tr><td colspan="11">Failed to load prompt candidates: '+esc(err.message || err)+'</td></tr>';els.rowCount.textContent='error';}
+loadRows().catch(showError);
+</script>
+{% endblock %}

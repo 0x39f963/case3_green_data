@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}SQL Security Studio{% endblock %}</title>
+  <link rel="stylesheet" href="/web/static/shared/design_system.css">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <div class="page-shell" id="pageShell">
+    <aside class="tool-col" id="toolCol">
+      <button class="tool-menu-toggle" id="toolToggle" type="button" aria-label="Open tools menu" aria-controls="toolMenu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <nav class="side-toolbar" id="toolMenu" aria-label="SQL Security Studio sections">
+        <a class="tool-brand" href="/chat" aria-label="SQL Security Studio home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </a>
+        <a class="tool-btn {% if active_section == 'chat' %}is-active{% endif %}" href="/chat" data-link aria-label="Chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="tool-label">Chat</span>
+        </a>
+        <a class="tool-btn {% if active_section == 'history' %}is-active{% endif %}" href="/history" data-link aria-label="History">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+          <span class="tool-label">History</span>
+        </a>
+        <a class="tool-btn {% if active_section == 'prompts' %}is-active{% endif %}" href="/settings/prompts" data-link aria-label="System prompts">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h10"/><path d="M18 16l2 2 3-4"/></svg>
+          <span class="tool-label">Prompts</span>
+        </a>
+        <a class="tool-btn {% if active_section == 'prompt-candidates' %}is-active{% endif %}" href="/prompts/candidates" data-link aria-label="Prompt candidates">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h10"/><path d="M4 18h7"/><path d="M17 14l2 2 4-5"/></svg>
+          <span class="tool-label">Prompt Runs</span>
+        </a>
+        {% if audits_enabled %}
+        <div class="tool-sep"></div>
+        <a class="tool-btn {% if active_section == 'audit-runs' %}is-active{% endif %}" href="/audits/runs" aria-label="Benchmark runs">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-7"/></svg>
+          <span class="tool-label">Runs</span>
+        </a>
+        <a class="tool-btn {% if active_section == 'batch-cases' %}is-active{% endif %}" href="/audits/batch-cases" aria-label="Batch cases">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/><path d="M8 3v18"/></svg>
+          <span class="tool-label">Cases</span>
+        </a>
+        <a class="tool-btn {% if active_section == 'tariffs' %}is-active{% endif %}" href="/settings/tariffs" aria-label="Tariffs">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.8 9a3 3 0 0 0-5.6 1.5c0 3 5.6 1.5 5.6 4.5a3 3 0 0 1-5.6 1.5"/><path d="M12 6v12"/></svg>
+          <span class="tool-label">Tariffs</span>
+        </a>
+        {% endif %}
+      </nav>
+    </aside>
+
+    <main class="report-main">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <script src="/web/static/shared/shell.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
