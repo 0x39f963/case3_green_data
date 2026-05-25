@@ -34,7 +34,7 @@ from baseline1 import (  # noqa: E402
     Vulnerability,
 )
 
-from app import classifier, llm_provider, prompt_registry, rag_adapter, sql_guard  # noqa: E402
+from app import auditor_group_runner, classifier, llm_provider, prompt_registry, rag_adapter, sql_guard  # noqa: E402
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 INTERNAL_LABELS = frozenset({"AUDIT_UNCERTAIN", "SYNTAX_BROKEN", "BROKEN_SQL", "NEEDS_HUMAN_REVIEW"})
@@ -291,6 +291,7 @@ class SecurityAuditor(_BaseSecurityAuditor):
         текстовая сводка для аналитика.
         """
         sensitive = rag_adapter.get_sensitive_fields()
+        grouped_enabled = auditor_group_runner.grouped_auditor_enabled()
         classifier_output = classifier.classify(
             sql_query,
             task=task,
@@ -298,7 +299,7 @@ class SecurityAuditor(_BaseSecurityAuditor):
             sensitive_fields=sensitive,
             allowed_tables=allowed_tables or [],
             allowed_columns=allowed_columns or {},
-            enable_judge=llm_provider.stage4_enabled(),
+            enable_judge=llm_provider.stage4_enabled() and not grouped_enabled,
         )
         rule_findings = [_classifier_vuln(item) for item in classifier_output.findings]
 
@@ -320,6 +321,74 @@ class SecurityAuditor(_BaseSecurityAuditor):
                     detector="explain_sandbox.error",
                 )
             )
+
+        if grouped_enabled:
+            context = {
+                "task": task,
+                "schema_context": schema_context,
+                "sensitive_fields": sensitive,
+                "allowed_tables": allowed_tables or [],
+                "allowed_columns": allowed_columns or {},
+            }
+            group_results = auditor_group_runner.run_grouped_audit_blocking(sql_query, context)
+            group_findings = _filter_model_findings(
+                sql_query,
+                auditor_group_runner.flatten_findings(group_results),
+            )
+            merged = _merge(rule_findings, group_findings)
+            overall = _build_overall_risk(merged)
+            security_risk, quality_risk = sql_guard.split_risk_scores(merged)
+            severity_blocked = _apply_severity_gate(merged)
+            approved = (security_risk < self.RISK_THRESHOLD) and not severity_blocked
+            internal_labels = _internal_labels(merged)
+            if approved:
+                summary = "Запрос одобрен grouped auditor framework. " + self._explain_approval(
+                    merged,
+                    "",
+                    explain_error,
+                )
+            else:
+                top = sorted(merged, key=lambda v: v.risk_score, reverse=True)[:3]
+                details = "; ".join(v.vuln_class for v in top)
+                summary = "Запрос отклонен grouped auditor framework. Основные риски: " + details + "."
+
+            result = AuditResult(
+                approved=approved,
+                vulnerabilities=merged,
+                overall_risk_score=overall,
+                summary=summary,
+            )
+            setattr(result, "metadata", {
+                "internal_labels": internal_labels,
+                "security_risk_score": security_risk,
+                "quality_risk_score": quality_risk,
+                "audit_groups": [item.to_dict() for item in group_results],
+            })
+
+            self.last_call = {
+                "grouped_auditor_enabled": True,
+                "audit_groups": [item.to_dict() for item in group_results],
+                "rule_findings": [v.__dict__ for v in rule_findings],
+                "model_findings": [v.__dict__ for v in group_findings],
+                "merged_findings": [v.__dict__ for v in merged],
+                "parse_error": None,
+                "explain_error": explain_error,
+                "backend": "grouped_framework",
+                "model": "deterministic_mvp",
+                "approved": approved,
+                "severity_gate_blocked": severity_blocked,
+                "internal_labels": internal_labels,
+                "overall_risk_score": overall,
+                "security_risk_score": security_risk,
+                "quality_risk_score": quality_risk,
+                "summary": summary,
+                "llm_call": {
+                    "backend": "grouped_framework",
+                    "model": "deterministic_mvp",
+                    "latency_ms": sum(int(item.latency_ms) for item in group_results),
+                },
+            }
+            return result
 
         # Phase 0.4 — sub-timing security RAG: cold start vs warm cache.
         security_context, security_context_timing = rag_adapter.get_security_context_timed(sql_query)

@@ -25,6 +25,8 @@ if str(_TASK3_ROOT) not in sys.path:
 
 from baseline1 import Vulnerability  # noqa: E402
 
+from app.ast_forbidden_check import check_forbidden_commands  # noqa: E402
+from app.ast_pii_masking import check_pii_masking  # noqa: E402
 from app import sql_parsing  # noqa: E402
 from app.rag_adapter import get_sensitive_fields, get_table_policy  # noqa: E402
 
@@ -56,6 +58,8 @@ SQL_EXTENSION_LABELS = frozenset(
         "SCHEMA_LEAK",
         "EXCESSIVE_SCOPE",
         "MASKING_REQUIRED",
+        "MASKING_DOWNGRADED",
+        "MASKING_TYPE_MISMATCH",
         "DDL_FORBIDDEN",
         "TRUNCATE",
         "COPY_EXPORT",
@@ -116,6 +120,8 @@ SECURITY_LABELS = frozenset(
         "DIRECT_SENSITIVE",
         "SCHEMA_LEAK",
         "MASKING_REQUIRED",
+        "MASKING_DOWNGRADED",
+        "MASKING_TYPE_MISMATCH",
         "DML_NO_WHERE",
         "DDL_FORBIDDEN",
         "TRUNCATE",
@@ -236,6 +242,8 @@ SEVERITY_BY_LABEL: dict[str, float] = {
     "UNSAFE_CAST": 4.0,
     "AMBIGUOUS_USER_SCOPE": 4.0,
     "MASKING_REQUIRED": 6.0,
+    "MASKING_DOWNGRADED": 8.0,
+    "MASKING_TYPE_MISMATCH": 5.0,
     "SYNTAX_BROKEN": 8.0,
     "AUDIT_UNCERTAIN": 5.0,
     "SCHEMA_OVERLAY_MISSING": 8.0,
@@ -245,6 +253,8 @@ SEVERITY_BY_LABEL: dict[str, float] = {
 REVISION_NOTES: dict[str, str] = {
     "SELECT_STAR": "Ne use SELECT *. List only needed non-sensitive columns and add LIMIT.",
     "DIRECT_SENSITIVE": "Remove sensitive fields or mask/aggregate them for the task.",
+    "MASKING_DOWNGRADED": "Keep the masking class from safe_rewrite or drop the raw sensitive column.",
+    "MASKING_TYPE_MISMATCH": "Use the same masking class as safe_rewrite for sensitive columns.",
     "NO_PAGINATION": "Add ORDER BY on a stable key and LIMIT 100 unless the task needs a full aggregate.",
     "DML_NO_WHERE": "UPDATE/DELETE without WHERE is blocked; rewrite the analytic task as SELECT.",
     "MULTI_STATEMENT": "Return exactly one PostgreSQL SELECT statement without extra commands.",
@@ -260,6 +270,14 @@ REVISION_NOTES: dict[str, str] = {
 }
 
 RuleFunc = Callable[[str, dict[str, Any] | None], list[Vulnerability]]
+
+_EARLY_BARRIER_DETECTOR = "rule.ast_forbidden."
+
+
+def is_early_barrier_finding(vuln: Vulnerability) -> bool:
+    """True for AST forbidden findings that must stop before LLM audit."""
+    detector = str(getattr(vuln, "detector", ""))
+    return detector.startswith(_EARLY_BARRIER_DETECTOR) and vuln.vuln_class != "SYNTAX_BROKEN"
 
 
 def check(sql: str, ctx: dict[str, Any] | None = None) -> list[Vulnerability]:
@@ -289,6 +307,12 @@ def check(sql: str, ctx: dict[str, Any] | None = None) -> list[Vulnerability]:
         ]
 
     findings: list[Vulnerability] = []
+    forbidden = _forbidden_command_findings(sql)
+    findings.extend(forbidden)
+    if any(is_early_barrier_finding(item) for item in forbidden):
+        findings.extend(_early_barrier_compat_findings(sql, ctx))
+        return _dedupe(findings)
+
     groups = (
         check_statement_boundary,
         check_runtime_contract,
@@ -613,6 +637,8 @@ def check_data_exposure(sql: str, ctx: dict[str, Any] | None = None) -> list[Vul
             )
         )
 
+    findings.extend(_pii_masking_findings(sql, ctx))
+
     hits = _selected_sensitive_hits(sql, ctx)
     if hits:
         evidence = ", ".join(hits[:8])
@@ -857,6 +883,53 @@ def make_vulnerability(
     setattr(vuln, "layer", layer)
     setattr(vuln, "detector", detector)
     return vuln
+
+
+def _forbidden_command_findings(sql: str) -> list[Vulnerability]:
+    """Convert marina-03 AST forbidden findings to baseline Vulnerability."""
+    findings: list[Vulnerability] = []
+    for item in check_forbidden_commands(sql):
+        findings.append(
+            make_vulnerability(
+                item.label,
+                "AST forbidden command detected: " + item.evidence,
+                REVISION_NOTES.get(item.label, "Return one read-only SELECT statement."),
+                item.evidence,
+                detector=_EARLY_BARRIER_DETECTOR + item.label.lower(),
+                severity=float(item.severity),
+                confidence=1.0,
+            )
+        )
+    return findings
+
+
+def _early_barrier_compat_findings(sql: str, ctx: dict[str, Any] | None) -> list[Vulnerability]:
+    """Keep legacy deterministic labels visible while still stopping before audit."""
+    findings: list[Vulnerability] = []
+    for group in (check_statement_boundary, check_classic_sqli, check_plpgsql, check_mutation):
+        findings.extend(group(sql, ctx))
+    return findings
+
+
+def _pii_masking_findings(sql: str, ctx: dict[str, Any]) -> list[Vulnerability]:
+    """Convert marina-02 AST PII/masking findings to baseline Vulnerability."""
+    sensitive = ctx.get("sensitive_fields") or get_sensitive_fields()
+    oracle_sql = ctx.get("oracle_sql")
+    raw = check_pii_masking(sql, sensitive, oracle_sql=str(oracle_sql) if oracle_sql else None)
+    findings: list[Vulnerability] = []
+    for item in raw:
+        findings.append(
+            make_vulnerability(
+                item.label,
+                item.evidence,
+                REVISION_NOTES.get(item.label, "Mask or remove sensitive projection."),
+                item.evidence,
+                detector="rule.ast_pii_masking." + item.label.lower(),
+                severity=float(item.severity),
+                confidence=1.0,
+            )
+        )
+    return findings
 
 
 def vulnerability_to_dict(vuln: Vulnerability) -> dict[str, Any]:

@@ -69,6 +69,8 @@ class PipelineState(TypedDict, total=False):
     human_reason: str
     policy_label: str
     policy_message: str
+    early_barrier_blocked: bool
+    early_barrier_labels: list[str]
     banned_identifiers: list[str]
     intent_kind: str
     intent_confidence: float
@@ -497,7 +499,7 @@ def _node_explain_sandbox(state: PipelineState) -> PipelineState:
 
     blocking_classes = {"MULTI_STATEMENT", "SYNTAX_BROKEN", "BROKEN_SQL", "UNBOUND_PLACEHOLDER"}
     blocked = next(
-        (v for v in findings if v.vuln_class in blocking_classes),
+        (v for v in findings if v.vuln_class in blocking_classes or sql_guard.is_early_barrier_finding(v)),
         None,
     )
     sentinel_active = _refusal_policy_active(state)
@@ -547,6 +549,10 @@ def _node_audit(state: PipelineState) -> PipelineState:
     sql = state["last_sql"]
     explain_error = state.get("last_explain_error")
     sentinel_active = _refusal_policy_active(state)
+    early_findings = [
+        v for v in state.get("last_guard_findings", [])
+        if sql_guard.is_early_barrier_finding(v)
+    ]
 
     if sentinel_active:
         # H1+H2: для sentinel-ответа audit не нужен — pipeline уже знает
@@ -591,6 +597,67 @@ def _node_audit(state: PipelineState) -> PipelineState:
             "iterations_log": log,
             "last_audit": result,
             "approved": False,
+        }
+
+    if early_findings:
+        result = AuditResult(
+            approved=False,
+            vulnerabilities=early_findings,
+            overall_risk_score=max((v.risk_score for v in early_findings), default=0.0),
+            summary=(
+                "Запрос отклонен ранним AST-барьером: "
+                + ", ".join(sorted({v.vuln_class for v in early_findings}))
+                + "."
+            ),
+        )
+        security_risk, quality_risk = sql_guard.split_risk_scores(early_findings)
+        setattr(result, "metadata", {
+            "internal_labels": [],
+            "security_risk_score": security_risk,
+            "quality_risk_score": quality_risk,
+            "early_barrier": True,
+        })
+        result = _add_prompt_findings(result, state.get("prompt_risk_findings", []))
+        with trace.step(
+            "audit",
+            inputs={
+                "iteration": state["iteration"],
+                "sql_length": len(sql),
+                "explain_error": explain_error,
+                "skipped_by_early_barrier": True,
+            },
+        ) as event:
+            event["outputs"]["approved"] = False
+            event["outputs"]["overall_risk_score"] = result.overall_risk_score
+            event["outputs"]["vuln_count"] = len(result.vulnerabilities)
+            event["outputs"]["skipped_by_early_barrier"] = True
+            event["details"] = {
+                "grouped_auditor_enabled": False,
+                "skipped_model_audit": True,
+                "early_barrier_findings": [v.__dict__ for v in early_findings],
+                "merged_findings": [v.__dict__ for v in result.vulnerabilities],
+                "summary": result.summary,
+            }
+        log_entry = IterationLog(
+            timestamp=datetime.now(timezone.utc),
+            iteration=state["iteration"],
+            sql_query=sql,
+            audit_result=result,
+            revision_notes="",
+        )
+        audits = list(state.get("audit_history", []))
+        audits.append(result)
+        log = list(state.get("iterations_log", []))
+        log.append(log_entry)
+        audit_storage.save_iteration(trace.request_id, log_entry)
+        return {
+            **state,
+            "audit_history": audits,
+            "iterations_log": log,
+            "last_audit": result,
+            "approved": False,
+            "early_barrier_blocked": True,
+            "early_barrier_labels": sorted({v.vuln_class for v in early_findings}),
         }
 
     with trace.step(
@@ -658,6 +725,7 @@ def _node_decide(state: PipelineState) -> PipelineState:
     security_risk, quality_risk = sql_guard.split_risk_scores(vulns)
     quality_only_block = bool(vulns) and security_risk <= 0 and quality_risk > 0
     approved = state.get("approved", False) and not prompt_blocked and not sentinel_kind
+    early_barrier = bool(state.get("early_barrier_blocked", False))
     iteration = state.get("iteration", 0)
     max_iter = state.get("max_iterations", 5)
     low_judge = any(
@@ -691,6 +759,11 @@ def _node_decide(state: PipelineState) -> PipelineState:
         needs_human = False
         human_reason = "prompt-risk заблокирован precheck"
         policy_label = _POLICY_PROMPT_BLOCKED
+    elif early_barrier:
+        decision = "abstain"
+        needs_human = False
+        human_reason = "ранний AST-барьер: " + ", ".join(state.get("early_barrier_labels", []))
+        policy_label = _POLICY_HARD_FAIL
     elif quality_only_block and not low_judge:
         decision = "approve"
         approved = True
@@ -731,6 +804,7 @@ def _node_decide(state: PipelineState) -> PipelineState:
             "security_risk": security_risk,
             "quality_risk": quality_risk,
             "quality_only_block": quality_only_block,
+            "early_barrier": early_barrier,
             "low_judge": low_judge,
             "has_uncertain_internal": has_uncertain_internal,
             "repeat_stop_reason": repeat_stop_reason,

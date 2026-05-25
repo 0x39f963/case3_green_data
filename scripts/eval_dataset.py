@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 
 from scripts import regression_add  # noqa: E402
 from app import sql_guard  # noqa: E402
+from app.ast_oracle_check import check_oracle_compatibility  # noqa: E402
 from app.classifier.encoder import EncoderClassifier  # noqa: E402
 from scripts.eval_common import check_recall_gate, load_eval_rows, score_rows, stage_env  # noqa: E402
 
@@ -56,8 +57,9 @@ def main() -> int:
         return 1 if report["verdict"] != "PASS" else 0
 
     run_id = "case3_sqlsec_eval_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+    rows = load_eval_rows()
     with stage_env(stage2=True, ml_type="lightgbm", stage3=True, stage4=False):
-        stats = score_rows(load_eval_rows())
+        stats = score_rows(rows)
 
     report = {
         "run_id": run_id,
@@ -72,6 +74,7 @@ def main() -> int:
         "label_metrics": stats["label_metrics"],
         "suite_metrics": stats["suite_metrics"],
         "false_negative_critical": stats["false_negative_critical"],
+        "oracle_compatibility": _oracle_compatibility_report(rows),
         "verdict": "PASS",
     }
     if args.enforce_gate and not check_recall_gate(report, args.sprint):
@@ -152,8 +155,50 @@ def eval_encoder_report(version: str, dataset: str | Path = "dataset_v1_0") -> d
         "stage4_skip_total": skip_total,
         "latency_p50_ms": _percentile(latencies, 0.50),
         "latency_p95_ms": _percentile(latencies, 0.95),
+        "oracle_compatibility": _oracle_compatibility_report(test),
     }
     return report
+
+
+def _oracle_compatibility_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Eval-only marina-01 check for rows that have safe_rewrite."""
+    labels: dict[str, int] = {}
+    per_class: dict[str, dict[str, int]] = {}
+    rows_with_oracle = 0
+    rows_with_findings = 0
+    examples: list[dict[str, Any]] = []
+    for row in rows:
+        oracle = row.get("safe_rewrite")
+        sql = row.get("sql")
+        if not oracle or not sql:
+            continue
+        rows_with_oracle += 1
+        findings = check_oracle_compatibility(str(sql), str(oracle))
+        class_key = str(row.get("class") or row.get("class_id") or row.get("task_family") or "unknown")
+        bucket = per_class.setdefault(class_key, {"rows": 0, "pass": 0, "fail": 0})
+        bucket["rows"] += 1
+        if findings:
+            rows_with_findings += 1
+            bucket["fail"] += 1
+            for item in findings:
+                labels[item.label] = labels.get(item.label, 0) + 1
+            if len(examples) < 10:
+                examples.append(
+                    {
+                        "id": row.get("id"),
+                        "labels": [item.label for item in findings],
+                        "evidence": [item.evidence for item in findings[:3]],
+                    }
+                )
+        else:
+            bucket["pass"] += 1
+    return {
+        "rows_with_safe_rewrite": rows_with_oracle,
+        "rows_with_findings": rows_with_findings,
+        "labels": dict(sorted(labels.items())),
+        "per_class": dict(sorted(per_class.items())),
+        "examples": examples,
+    }
 
 
 def _apply_encoder_gate(report: dict[str, Any]) -> dict[str, Any]:
