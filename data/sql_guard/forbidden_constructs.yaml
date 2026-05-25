@@ -1,6 +1,6 @@
 ## DDL category
 
-- id: drop_object
+- id: drop_catastrophic
   label: DDL_FORBIDDEN
   severity: 9
   category: ddl
@@ -10,9 +10,9 @@
   runtime_group: runtime_mvp
   runtime_reason: "Deterministic DDL AST node; generated analytics SQL must not drop database objects."
   description: |
-    DROP TABLE/SCHEMA/DATABASE/VIEW/INDEX/SEQUENCE/TYPE — операция удаления объектов базы данных.
-    Удаляет указанные структуры (таблицы, представления, индексы, последовательности,
-    типы и другие объекты), а также связанные с ними данные и зависимости.
+    DROP TABLE/SCHEMA/DATABASE/VIEW/INDEX — операция удаления объектов базы данных.
+    Удаляет указанные структуры (таблицы, схемы, базы)
+    , а также связанные с ними данные и зависимости.
     Выполнение DROP приводит к разрушению структуры БД, потере данных и нарушению
     целостности схемы, включая каскадное удаление зависимых объектов при CASCADE.
     Считается критически опасной DDL-командой из-за риска безвозвратной потери данных
@@ -20,11 +20,19 @@
     В аналитической системе всегда запрещено.
   example_bad:
     - "DROP TABLE sys_employee;"
+    - "DROP SCHEMA analytics CASCADE;"
+    - "DROP DATABASE production_db;"
+    - "DROP INDEX idx_employee_email;"
+    - "DROP VIEW employee_report;"
   example_good:
     - "SELECT id, name FROM sys_employee LIMIT 20;"
   reference:
     - "https://www.postgresql.org/docs/current/sql-droptable.html"
-  added_round: "2026-05-23"
+    - "https://www.postgresql.org/docs/current/sql-dropschema.html"
+    - "https://www.postgresql.org/docs/current/sql-dropdatabase.html"
+    - "https://www.postgresql.org/docs/current/sql-dropindex.html"
+    - "https://www.postgresql.org/docs/current/sql-dropview.html"
+  added_round: "2026-05-24"
 
 - id: truncate_table
   label: TRUNCATE
@@ -48,7 +56,7 @@
     - "https://www.postgresql.org/docs/current/sql-truncate.html"
   added_round: "2026-05-23"
 
-- id: alter_object
+- id: alter_relation_object
   label: DDL_FORBIDDEN
   severity: 9
   category: ddl
@@ -58,17 +66,102 @@
   runtime_group: runtime_mvp
   runtime_reason: "Deterministic DDL AST node; generated analytics SQL must not mutate schema metadata."
   description: |
-    ALTER TABLE/SCHEMA/DATABASE/VIEW/INDEX/SEQUENCE/TYPE — операция изменения структуры или свойств объектов базы данных.
-    Позволяет добавлять, удалять или изменять колонки, индексы, последовательности и другие элементы схемы.
-    Может влиять на совместимость данных и поведение приложений, изменяя метаданные или ограничения.
-    Считается потенциально опасной DDL-операцией из-за риска нарушения структуры и логики данных.
-    В аналитической системе всегда запрещено.
+    ALTER TABLE/INDEX/SEQUENCE — операция изменения структуры объектов базы данных.
+    Позволяет изменять колонки, ограничения, индексы и последовательности,
+    влияя на структуру хранения данных и производительность запросов.
+    Может нарушать совместимость схемы, работу приложений и целостность данных.
+    В аналитической системе такие изменения запрещены.
   example_bad:
     - "ALTER TABLE sys_company DROP COLUMN attr_email;"
+    - "ALTER TABLE sys_employee ALTER COLUMN status TYPE TEXT;"
+    - "ALTER INDEX idx_employee_email RENAME TO idx_emp_email_old;"
+    - "ALTER SEQUENCE employee_id_seq RESTART WITH 1;"
   example_good:
-    - "SELECT id, name FROM sys_company WHERE id = 1;"
+    - "-- ALTER TABLE/INDEX/SEQUENCE всегда блокируется"
   reference:
     - "https://www.postgresql.org/docs/current/sql-altertable.html"
+    - "https://www.postgresql.org/docs/current/sql-alterindex.html"
+    - "https://www.postgresql.org/docs/current/sql-altersequence.html"
+  added_round: "2026-05-23"
+
+- id: alter_database
+  label: DDL_FORBIDDEN
+  severity: 9
+  category: ddl
+  ast_check: node_type
+  ast_node: ast.AlterDatabaseStmt
+  description: |
+    ALTER DATABASE — операция изменения параметров базы данных.
+    Позволяет изменять конфигурацию и поведение БД, включая runtime-параметры,
+    ограничения подключений и настройки производительности.
+    Может влиять на стабильность работы системы и доступность приложений.
+    В аналитической системе запрещено.
+  example_bad:
+    - "ALTER DATABASE production_db SET statement_timeout = 0;"
+    - "ALTER DATABASE analytics RENAME TO analytics_old;"
+  example_good:
+    - "-- ALTER DATABASE всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-alterdatabase.html"
+  added_round: "2026-05-23"
+
+- id: alter_schema
+  label: DDL_FORBIDDEN
+  severity: 9
+  category: ddl
+  ast_check: node_type
+  ast_node: ast.AlterObjectSchemaStmt
+  description: |
+    ALTER SCHEMA — операция изменения схемы объектов базы данных.
+    Позволяет перемещать объекты между схемами или изменять namespace объектов.
+    Может нарушать маршрутизацию запросов, права доступа и совместимость SQL-кода.
+    В аналитической системе запрещено.
+  example_bad:
+    - "ALTER SCHEMA analytics RENAME TO new_schema;"
+  example_good:
+    - "-- ALTER SCHEMA всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-alterschema.html"
+  added_round: "2026-05-23"
+
+- id: alter_function
+  label: DDL_FORBIDDEN
+  severity: 9
+  category: ddl
+  ast_check: node_type
+  ast_node: ast.AlterFunctionStmt
+  description: |
+    ALTER FUNCTION — операция изменения свойств серверных функций.
+    Позволяет изменять параметры безопасности, ownership и поведение SQL/PLpgSQL-функций.
+    Особенно опасны изменения SECURITY DEFINER и execution context,
+    так как они могут привести к повышению привилегий или изменению логики выполнения.
+    В аналитической системе запрещено.
+  example_bad:
+    - "ALTER FUNCTION calc_salary(integer) SECURITY DEFINER;"
+    - "ALTER FUNCTION process_payment(integer) OWNER TO admin;"
+  example_good:
+    - "-- ALTER FUNCTION всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-alterfunction.html"
+  added_round: "2026-05-23"
+
+- id: alter_view
+  label: DDL_FORBIDDEN
+  severity: 8
+  category: ddl
+  ast_check: node_type
+  ast_node: ast.ViewStmt
+  description: |
+    ALTER VIEW — операция изменения представлений базы данных.
+    Может изменять структуру аналитических запросов и зависимых объектов.
+    Нарушение представлений может привести к ошибкам отчетности и деградации аналитики.
+    В аналитической системе запрещено.
+  example_bad:
+    - "ALTER VIEW employee_report RENAME TO employee_report_old;"
+  example_good:
+    - "-- ALTER VIEW всегда блокируется"
+  reference:
+    - "https://www.postgresql.org/docs/current/sql-alterview.html"
   added_round: "2026-05-23"
 
 - id: create_object
@@ -193,8 +286,8 @@
 
 ## dml_unsafe category
 
-- id: delete_without_where
-  label: DML_NO_WHERE
+- id: delete_statement
+  label: DML_UNSAFE
   severity: 9
   category: dml_unsafe
   ast_check: dml_without_where_or_tautology
@@ -203,23 +296,27 @@
   runtime_group: runtime_mvp
   runtime_reason: "Deterministic DELETE check when WHERE is absent or trivially true; low false positive risk."
   description: |
-    DELETE без условия WHERE или с эквивалентно-тривиальным условиями (например WHERE 1=1).
-    Приводит к удалению всех строк из таблицы, фактически выполняя полное уничтожение данных.
-    Считается критически опасной операцией из-за невозможности точечного восстановления
-    и риска полной потери данных в таблице.
+    DELETE — операция удаления данных из таблиц базы данных.
+    В аналитическом контуре разрешены только read-only запросы, поэтому любые
+    операции удаления данных считаются небезопасными.
+    DELETE приводит к физическому удалению строк, нарушению целостности данных
+    и полной потере информации при массовом выполнении.
+    Особенно опасен DELETE без WHERE или с тривиальными условиями
+    (например WHERE 1=1), так как он удаляет все строки таблицы.
+    В аналитической системе DELETE всегда запрещён.
   example_bad:
     - "DELETE FROM scp_application;"
     - "DELETE FROM count_turnover WHERE 1=1;"
     - "DELETE FROM acc_number WHERE true;"
+    - "DELETE FROM production_payments WHERE payment_id = 1;"
   example_good:
-    - "DELETE FROM scp_application WHERE id = 1 AND status = 1;"
-    - "DELETE FROM count_turnover WHERE id = 10;"
+    - "-- DELETE всегда блокируется"
   reference:
     - "https://www.postgresql.org/docs/current/sql-delete.html"
   added_round: "2026-05-23"
 
-- id: update_without_where
-  label: DML_NO_WHERE
+- id: update_statement
+  label: DML_UNSAFE
   severity: 9
   category: dml_unsafe
   ast_check: dml_without_where_or_tautology
@@ -228,25 +325,29 @@
   runtime_group: runtime_mvp
   runtime_reason: "Deterministic UPDATE check when WHERE is absent or trivially true; low false positive risk."
   description: |
-    UPDATE без условия WHERE или с эквивалентно-тривиальным условиями (например WHERE 1=1).
-    Приводит к массовому изменению всех строк в таблице, включая критические поля.
-    Считается опасной операцией, так как может полностью исказить или повредить данные
-    без возможности точечного отката.
+    UPDATE — операция изменения данных в таблицах базы данных.
+    В аналитическом контуре разрешены только read-only запросы, поэтому любые
+    операции обновления данных считаются небезопасными.
+
+    UPDATE может изменять production-данные, повреждать бизнес-критичные поля,
+    нарушать целостность отчётности и приводить к массовому искажению данных.
+    Особенно опасны UPDATE без WHERE или с тривиальными условиями
+    (например WHERE 1=1), так как они затрагивают все строки таблицы.
+    В аналитической системе UPDATE всегда запрещён.
   example_bad:
     - "UPDATE sys_employee SET status = 0;"
     - "UPDATE credit_contract SET status = 0 WHERE 1=1;"
     - "UPDATE sys_company SET inn = '' WHERE true;"
+    - "UPDATE production_payments SET amount = 0 WHERE payment_id = 1;"
   example_good:
-    - "UPDATE sys_employee SET status = 0 WHERE id = 24;"
-    - "UPDATE credit_contract SET status = 0 WHERE name = 'company';"
-    - "UPDATE sys_company SET inn = 'inn' WHERE id = 1;"
+    - "-- UPDATE всегда блокируется"
   reference:
     - "https://www.postgresql.org/docs/current/sql-update.html"
   added_round: "2026-05-23"
 
 - id: insert_foreign_table
   label: INSERT_UNSAFE
-  severity: 7
+  severity: 9
   category: dml_unsafe
   ast_check: insert_blocked_select_only_mode
   ast_node: ast.InsertStmt
@@ -259,6 +360,10 @@
     поэтому для первого runtime-подключения правило должно блокировать сам InsertStmt.
     Table-specific режим можно добавить позже, когда появится явная модель writable contexts.
   example_bad:
+    - "INSERT INTO sys_employee (id, status) VALUES (1, 'active');"
+    - "INSERT INTO production_payments (id, amount) VALUES (1, 999999);"
+    - "INSERT INTO analytics.monthly_report VALUES (1, 'fake');"
+    - "INSERT INTO public.users (login, role) VALUES ('admin2', 'admin');"
     - "INSERT INTO sys_employee (id, name) VALUES (999, 'test');"
     - "INSERT INTO audit_shadow SELECT * FROM sys_employee;"
   example_good:
@@ -533,9 +638,9 @@
     - "https://portswigger.net/web-security/sql-injection/blind"
   added_round: "2026-05-23"
 
-- id: blind_tautology
-  label: TAUTOLOGY
-  severity: 9
+- id: blind_inj
+  label: SQL_INJ_CLASSIC
+  severity: 10
   category: blind_injection
   ast_check: where_or_having_tautology
   ast_node: ast.A_Expr
@@ -638,8 +743,8 @@
   added_round: "2026-05-23"
 
 - id: comment_payload_bypass
-  label: COMMENT_TRUNCATION
-  severity: 8
+  label: MULTI_STATEMENT
+  severity: 9
   category: multi_stmt
   ast_check: raw_sql_comment_regex
   ast_node: raw_sql.comment
@@ -661,6 +766,58 @@
     - "https://portswigger.net/web-security/sql-injection"
     - "https://book.hacktricks.wiki/en/pentesting-web/sql-injection/index.html"
     - "https://owasp.org/www-community/attacks/SQL_Injection"
+  added_round: "2026-05-23"
+
+## other category
+
+- id: cost_dos
+  label: COST_DOS
+  severity: 7
+  category: other
+  ast_check: node_type
+  ast_node: ast.SelectStmt
+  description: |
+    Запрос может привести к чрезмерной нагрузке на базу данных.
+    Включает операции, которые потенциально создают высокий cost выполнения:
+    широкие JOIN без селективных условий, полные сканирования таблиц,
+    отсутствующие ограничения выборки (LIMIT), тяжелые сортировки и агрегации.
+    Такие запросы могут приводить к деградации производительности,
+    блокировкам и отказу в обслуживании (DoS на уровне БД).
+  example_bad:
+    - "SELECT * FROM sys_employee e JOIN logs l ON e.id = l.emp_id;"
+    - "SELECT * FROM orders ORDER BY created_at;"
+    - "SELECT * FROM huge_table;"
+    - "SELECT user_id, COUNT(*) FROM events GROUP BY user_id;"
+  example_good:
+    - "SELECT * FROM sys_employee WHERE id = 1 LIMIT 100;"
+    - "SELECT id, name FROM users WHERE id = 10;"
+  reference:
+    - "https://www.postgresql.org/docs/current/performance-tips.html"
+    - "https://www.postgresql.org/docs/current/using-explain.html"
+  added_round: "2026-05-23"
+
+- id: cross_join_explosion
+  label: CROSS_JOIN_EXPLOSION
+  severity: 7
+  category: other
+  ast_check: node_type
+  ast_node: ast.JoinExpr
+  description: |
+    JOIN может приводить к экспоненциальному увеличению количества строк результата.
+    Особенно опасны CROSS JOIN и JOIN без явного условия связи (ON clause),
+    так как они создают декартово произведение наборов данных.
+    Это может приводить к резкому росту объема вычислений, памяти и времени выполнения,
+    вплоть до деградации производительности базы данных.
+  example_bad:
+    - "SELECT * FROM users CROSS JOIN orders;"
+    - "SELECT * FROM users u JOIN orders o;"
+    - "SELECT * FROM a, b;"
+  example_good:
+    - "SELECT * FROM users u JOIN orders o ON u.id = o.user_id;"
+    - "SELECT * FROM users WHERE id = 1;"
+  reference:
+    - "https://www.postgresql.org/docs/current/queries-table-expressions.html"
+    - "https://www.postgresql.org/docs/current/explicit-joins.html"
   added_round: "2026-05-23"
 
 
