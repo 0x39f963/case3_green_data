@@ -5,7 +5,10 @@ Checks:
 - overlay matches v1 or v2 JSON Schema;
 - every table from Marina schema exists in overlay and no extra tables exist;
 - v2 column sets match Marina schema;
-- allowed_ops and denied_ops do not overlap.
+- allowed_ops and denied_ops do not overlap;
+- (v2 only) column.category == "pii" must appear as a key in table.pii_tags;
+- (v2 only) no column description shorter than 16 characters;
+- (v2 only) no column description equal to a single generic word from the watchlist.
 """
 
 from __future__ import annotations
@@ -23,6 +26,12 @@ SCHEMA_PATH = ROOT / "TASK-3" / "marina-case3-rag" / "schema.json"
 OVERLAY_PATH = ROOT / "deploy" / "schema_overlay.json"
 OVERLAY_SCHEMA_PATH = ROOT / "deploy" / "schema_overlay.schema.json"
 OVERLAY_SCHEMA_V2_PATH = ROOT / "deploy" / "schema_overlay.schema.v2.json"
+
+GENERIC_DESCRIPTION_WATCHLIST = {
+    "Сумма", "Валюта", "Период", "Описание", "Тип", "Статус",
+    "Идентификатор", "Маржа", "Дата", "Владелец",
+}
+MIN_DESCRIPTION_LENGTH = 16
 
 
 def main() -> int:
@@ -52,6 +61,7 @@ def main() -> int:
     if extra:
         failures.append("extra tables: " + ", ".join(extra))
 
+    is_v2 = overlay_schema_path.name.endswith(".v2.json")
     for name, item in (overlay.get("tables") or {}).items():
         allowed = {str(op).upper() for op in item.get("allowed_ops", [])}
         denied = {str(op).upper() for op in item.get("denied_ops", [])}
@@ -68,6 +78,8 @@ def main() -> int:
                 failures.append(name + " missing columns: " + ", ".join(missing_cols[:20]))
             if extra_cols:
                 failures.append(name + " extra columns: " + ", ".join(extra_cols[:20]))
+        if is_v2:
+            failures.extend(_check_v2_table_quality(name, item))
 
     if failures:
         print("schema overlay validation: FAIL")
@@ -86,6 +98,35 @@ def _resolve_path(path: Path) -> Path:
     if path.is_absolute():
         return path
     return ROOT / path
+
+
+def _check_v2_table_quality(name: str, item: dict) -> list[str]:
+    failures: list[str] = []
+    pii_tags = item.get("pii_tags") or {}
+    pii_keys = set(pii_tags.keys()) if isinstance(pii_tags, dict) else set()
+    columns = item.get("columns")
+    if not isinstance(columns, dict):
+        return failures
+    for cname, cinfo in columns.items():
+        if not isinstance(cinfo, dict):
+            continue
+        category = cinfo.get("category")
+        if category == "pii" and cname not in pii_keys:
+            failures.append(
+                name + "." + cname + ': category="pii" but column is not listed in table.pii_tags'
+            )
+        description = (cinfo.get("description") or "").strip()
+        if description and len(description) < MIN_DESCRIPTION_LENGTH:
+            failures.append(
+                name + "." + cname + ": description shorter than " + str(MIN_DESCRIPTION_LENGTH)
+                + " chars: " + repr(description)
+            )
+        if description in GENERIC_DESCRIPTION_WATCHLIST:
+            failures.append(
+                name + "." + cname + ": description is a single generic word from watchlist: "
+                + repr(description)
+            )
+    return failures
 
 
 def _default_schema_path(overlay_path: Path, overlay: dict) -> Path:

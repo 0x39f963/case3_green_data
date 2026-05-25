@@ -48,6 +48,10 @@ NO_ORACLE_CASES: list[tuple[str, str, set[str]]] = [
      "SELECT substring(phone) AS p FROM sys_employee", {"DIRECT_SENSITIVE"}),
     ("regexp_replace(phone,...) — класс replace",
      "SELECT regexp_replace(phone, '.', '*') AS p FROM sys_employee", set()),
+    ("string_agg(email, ',') — текстовая агрегация не маскирует PII",
+     "SELECT string_agg(email, ',') AS e FROM sys_employee", {"DIRECT_SENSITIVE"}),
+    ("array_agg(email) — массив-агрегация не маскирует PII",
+     "SELECT array_agg(email) AS e FROM sys_employee", {"DIRECT_SENSITIVE"}),
 ]
 
 NO_ORACLE_CASE_IDS = [
@@ -65,6 +69,8 @@ NO_ORACLE_CASE_IDS = [
     "SAFE_REWRITE_PII_CONCAT_MASKED_OK",
     "SAFE_REWRITE_PII_PARTIAL_NO_LENGTH_RAW",
     "SAFE_REWRITE_PII_REPLACE_OK",
+    "SAFE_REWRITE_PII_STRING_AGG_RAW",
+    "SAFE_REWRITE_PII_ARRAY_AGG_RAW",
 ]
 
 

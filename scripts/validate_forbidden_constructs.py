@@ -4,13 +4,23 @@
 from __future__ import annotations
 
 import argparse
+import re
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+try:
+    from pglast.parser import parse_sql as _pglast_parse_sql
+    from pglast.parser import ParseError as _PglastParseError
+except Exception:  # pragma: no cover - pglast is optional
+    _pglast_parse_sql = None
+    _PglastParseError = Exception
+
 
 DEFAULT_PATH = Path("data/sql_guard/forbidden_constructs.yaml")
+ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 REQUIRED_FIELDS = {
     "id",
@@ -145,6 +155,32 @@ def check_rule(rule: dict[str, Any], seen: set[str], index: int) -> list[str]:
         if field in rule and not is_non_empty_text_list(rule[field]):
             errors.append(f"{rule_id}: {field} must be a non-empty list of text")
 
+    added_round = rule.get("added_round")
+    if isinstance(added_round, str):
+        if not ISO_DATE_RE.match(added_round):
+            errors.append(f"{rule_id}: added_round must be ISO date YYYY-MM-DD, got {added_round!r}")
+        else:
+            try:
+                date.fromisoformat(added_round)
+            except ValueError:
+                errors.append(f"{rule_id}: added_round is not a valid date: {added_round!r}")
+    elif isinstance(added_round, date):
+        pass
+    elif added_round is not None:
+        errors.append(f"{rule_id}: added_round must be ISO date string, got type {type(added_round).__name__}")
+
+    for field in ("example_bad", "example_good"):
+        examples = rule.get(field)
+        if isinstance(examples, list):
+            for offset, sql in enumerate(examples):
+                if not isinstance(sql, str):
+                    continue
+                parse_error = _try_parse_sql(sql)
+                if parse_error is not None:
+                    errors.append(
+                        f"{rule_id}: {field}[{offset}] is not parseable SQL: {parse_error}"
+                    )
+
     ast_check = rule.get("ast_check")
     if ast_check in {"func_call_with_arg", "func_call_numeric_arg_gt"} and not is_non_empty_text(
         rule.get("func_name")
@@ -159,6 +195,18 @@ def check_rule(rule: dict[str, Any], seen: set[str], index: int) -> list[str]:
         errors.append(f"{rule_id}: schema_access requires schema_name")
 
     return errors
+
+
+def _try_parse_sql(sql: str) -> str | None:
+    if _pglast_parse_sql is None:
+        return None
+    try:
+        _pglast_parse_sql(sql)
+    except _PglastParseError as exc:
+        return str(exc)
+    except Exception as exc:  # pragma: no cover - defensive
+        return f"{type(exc).__name__}: {exc}"
+    return None
 
 
 def load_rules(path: Path) -> list[dict[str, Any]]:

@@ -20425,23 +20425,27 @@
           ]
         },
         "email_confirmed": {
-          "description": "EMAIL confirmed. Чувствительные данные, требует маскировки при выводе.",
-          "category": "pii",
+          "description": "Булев флаг подтверждения email-адреса сотрудника. Сам флаг не является PII; чувствительное значение хранится в sys_employee.email.",
+          "category": "status",
           "aliases": [
-            "email confirmed"
+            "email confirmed",
+            "признак подтверждения email"
           ],
           "nl_phrases": [
-            "EMAIL confirmed"
+            "подтверждён ли email сотрудника",
+            "флаг подтверждения email"
           ]
         },
         "phone_confirmed": {
-          "description": "Phone number confirmed. Чувствительные данные, требует маскировки при выводе.",
-          "category": "pii",
+          "description": "Булев флаг подтверждения телефона сотрудника. Сам флаг не является PII; чувствительное значение хранится в sys_employee.phone.",
+          "category": "status",
           "aliases": [
-            "phone number confirmed"
+            "phone number confirmed",
+            "признак подтверждения телефона"
           ],
           "nl_phrases": [
-            "Phone number confirmed"
+            "подтверждён ли телефон сотрудника",
+            "флаг подтверждения телефона"
           ]
         },
         "ban_send_notifications": {

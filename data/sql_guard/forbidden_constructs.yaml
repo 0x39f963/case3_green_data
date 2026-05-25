@@ -175,7 +175,7 @@
   ast_node: ast.VariableSetStmt
   runtime_mvp: true
   runtime_group: runtime_mvp
-  runtime_reason: "Requires command-specific RESET ROLE check; role context changes are outside analytics SQL."
+  runtime_reason: "Requires command-specific RESET ROLE check; role context changes are outside analytics SQL. Severity 6 (not 8 like set_role) reflects standalone risk: RESET ROLE alone does not grant new privileges, but it is blocked in MVP because it can complete role-bypass chains started by an earlier SET ROLE."
   description: |
     RESET ROLE — операция сброса текущей активной роли пользователя в сессии к исходной роли.
     Используется для возврата контекста привилегий после выполнения SET ROLE.
