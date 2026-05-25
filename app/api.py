@@ -109,6 +109,10 @@ class RunRequest(BaseModel):
         default=None,
         description="OpenRouter provider routing for Stage 4 judge only.",
     )
+    codex_reasoning_effort: str | None = Field(
+        default=None,
+        description="Codex CLI generator reasoning effort for this request.",
+    )
     judge_backend: str | None = Field(
         default=None,
         description="Override Stage 4 judge backend только для этого запроса.",
@@ -183,6 +187,7 @@ async def run(req: RunRequest) -> dict[str, Any]:
             llm_generator_model=req.llm_generator_model,
             openrouter_provider=req.openrouter_provider,
             judge_openrouter_provider=req.judge_openrouter_provider,
+            codex_reasoning_effort=req.codex_reasoning_effort,
             judge_backend=req.judge_backend,
             prompt_check_enabled=req.prompt_check_enabled,
             prompt_check_backend=req.prompt_check_backend,

@@ -58,6 +58,7 @@ async def execute_run(
     llm_generator_model: str | None = None,
     openrouter_provider: str | None = None,
     judge_openrouter_provider: str | None = None,
+    codex_reasoning_effort: str | None = None,
     judge_backend: str | None = None,
     prompt_check_enabled: bool | None = None,
     prompt_check_backend: str | None = None,
@@ -85,10 +86,14 @@ async def execute_run(
         started = time.monotonic()
         prev_profile = os.environ.get("LLM_PROFILE_MODE", "")
         prev_isolation = os.environ.get("PIPELINE_ISOLATION", "")
+        prev_codex_reasoning = os.environ.get("CODEX_GENERATOR_REASONING_EFFORT", "")
+        codex_effort = (codex_reasoning_effort or "").strip()
         if profile:
             os.environ["LLM_PROFILE_MODE"] = "true"
         if isolation_mode:
             os.environ["PIPELINE_ISOLATION"] = isolation_mode
+        if codex_effort:
+            os.environ["CODEX_GENERATOR_REASONING_EFFORT"] = codex_effort
         try:
             result = await asyncio.wait_for(
                 asyncio.to_thread(
@@ -117,6 +122,11 @@ async def execute_run(
                     os.environ["LLM_PROFILE_MODE"] = prev_profile
                 else:
                     os.environ.pop("LLM_PROFILE_MODE", None)
+            if codex_effort:
+                if prev_codex_reasoning:
+                    os.environ["CODEX_GENERATOR_REASONING_EFFORT"] = prev_codex_reasoning
+                else:
+                    os.environ.pop("CODEX_GENERATOR_REASONING_EFFORT", None)
 
         elapsed = time.monotonic() - started
         if elapsed > soft_sec:
