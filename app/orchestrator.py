@@ -34,7 +34,7 @@ from baseline1 import (  # noqa: E402
     Vulnerability,
 )
 
-from app import audit_log, audit_storage, explain_sandbox, generator_selector, intent_classifier, llm_provider, prompt_check, prompt_check_llm, rag_adapter, sentinel, sql_guard  # noqa: E402
+from app import audit_log, audit_storage, business_alignment, explain_sandbox, generator_selector, intent_classifier, llm_provider, prompt_check, prompt_check_llm, rag_adapter, sentinel, sql_guard  # noqa: E402
 from app.auditor import SecurityAuditor  # noqa: E402
 from app.generator import SQLGenerator  # noqa: E402
 from app.llm_provider import LLMConfigError, ProviderUnavailable  # noqa: E402
@@ -75,6 +75,7 @@ class PipelineState(TypedDict, total=False):
     intent_kind: str
     intent_confidence: float
     intent_anchors: list[str]
+    business_requirements: list[dict[str, Any]]
     trace: Trace
     generator: SQLGenerator
     auditor: SecurityAuditor
@@ -403,6 +404,9 @@ def _node_generate(state: PipelineState) -> PipelineState:
                 "intent_kind": state.get("intent_kind", ""),
                 "intent_confidence": state.get("intent_confidence", 0.0),
             }
+            requirements = business_alignment.extract_requirements(state["task"], selector_ctx)
+            requirement_dicts = business_alignment.requirements_to_dicts(requirements)
+            selector_ctx["business_requirements"] = requirement_dicts
             selected = generator_selector.select_best_with_details(candidates, selector_ctx)
             sql = selected.sql
             event["outputs"]["sql"] = sql
@@ -411,6 +415,13 @@ def _node_generate(state: PipelineState) -> PipelineState:
             event["details"] = generator.last_call
             event["details"]["generate_candidates"] = candidates
             event["details"]["selector_scores"] = selected.scores
+            event["details"]["selected_index"] = selected.selected_index
+            event["details"]["business_requirements"] = requirement_dicts
+            event["details"]["selector_reason"] = (
+                selected.scores[selected.selected_index].get("selector_reason")
+                if 0 <= selected.selected_index < len(selected.scores)
+                else ""
+            )
             detail_candidates = event["details"].get("candidates")
             if isinstance(detail_candidates, list):
                 for idx, item in enumerate(detail_candidates):
@@ -420,6 +431,12 @@ def _node_generate(state: PipelineState) -> PipelineState:
                     item["selected_by_selector"] = idx == selected.selected_index
                     if idx < len(selected.scores):
                         item["selector_score"] = selected.scores[idx]
+                        item["business_requirements"] = requirement_dicts
+                        item["business_alignment_findings"] = selected.scores[idx].get(
+                            "business_alignment_findings",
+                            [],
+                        )
+                        item["selector_reason"] = selected.scores[idx].get("selector_reason", "")
             event["details"]["ast_tree"] = trace_utils.ast_tree(sql)
             event["details"]["diff"] = trace_utils.sql_diff(prior_sql, sql)
 
@@ -438,6 +455,11 @@ def _node_generate(state: PipelineState) -> PipelineState:
         "last_sql": sql,
         "policy_label": policy_label,
         "policy_message": policy_message,
+        "business_requirements": business_alignment.requirements_to_dicts(
+            event.get("details", {}).get("business_requirements", [])
+            if isinstance(event.get("details"), dict)
+            else []
+        ),
     }
 
 
@@ -467,13 +489,21 @@ def _node_sql_guard(state: PipelineState) -> PipelineState:
                 "schema_context": state.get("last_generation_context", ""),
                 "allowed_tables": state.get("allowed_tables", []),
                 "allowed_columns": state.get("allowed_columns", {}),
+                "business_requirements": state.get("business_requirements", []),
                 "enforce_overlay": _strict_overlay_enabled(),
                 "intent_kind": state.get("intent_kind", ""),
                 "intent_confidence": state.get("intent_confidence", 0.0),
             },
         )
+        business_findings = [v for v in findings if business_alignment.is_business_label(v.vuln_class)]
         event["outputs"]["vuln_count"] = len(findings)
         event["details"]["findings"] = [v.__dict__ for v in findings]
+        event["details"]["business_requirements"] = business_alignment.requirements_to_dicts(
+            state.get("business_requirements", [])
+        )
+        event["details"]["business_alignment_findings"] = business_alignment.findings_to_dicts(
+            business_findings
+        )
         event["details"]["evidence"] = [
             {
                 "label": v.vuln_class,
@@ -682,6 +712,12 @@ def _node_audit(state: PipelineState) -> PipelineState:
         event["outputs"]["overall_risk_score"] = result.overall_risk_score
         event["outputs"]["vuln_count"] = len(result.vulnerabilities)
         event["details"] = auditor.last_call
+        event["details"]["business_requirements"] = business_alignment.requirements_to_dicts(
+            state.get("business_requirements", [])
+        )
+        event["details"]["business_alignment_findings"] = business_alignment.findings_to_dicts(
+            [v for v in result.vulnerabilities if business_alignment.is_business_label(v.vuln_class)]
+        )
 
     log_entry = IterationLog(
         timestamp=datetime.now(timezone.utc),

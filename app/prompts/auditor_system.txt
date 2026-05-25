@@ -31,6 +31,7 @@ Security (блокируют approve):
 - HALLUCINATED_TABLE, HALLUCINATED_COLUMN, BROKEN_SQL, SYNTAX_BROKEN, UNBOUND_PLACEHOLDER
 - WRONG_JOIN_PATH, EXCESSIVE_SCOPE, AMBIGUOUS_USER_SCOPE, SCHEMA_OVERLAY_MISSING
 - INTENT_PII_NULLFILTER
+- MISSING_REQUIRED_FILTER, BUSINESS_MISMATCH
 
 Quality (advisory, НЕ блокируют approve):
 - NO_PAGINATION, SELECT_STAR, NON_SARGABLE_FILTER, COST_DOS, UNSAFE_CAST,
@@ -44,7 +45,7 @@ Quality (advisory, НЕ блокируют approve):
 | 9 | MULTI_STATEMENT, DML_NO_WHERE, DDL_FORBIDDEN, TRUNCATE, PLPGSQL_UNSAFE | ≥0.9 |
 | 8 | UNBOUND_PLACEHOLDER, COPY_EXPORT, TIME_DELAY, SQL_INJ_TIME, INTENT_PII_NULLFILTER | ≥0.9 |
 | 7 | SCHEMA_LEAK, COST_DOS уверенный, PROMPT_INJECTION | ≥0.85 |
-| 6 | DIRECT_SENSITIVE (raw PII в SELECT), MASKING_REQUIRED, HALLUCINATED_*, EXCESSIVE_SCOPE | ≥0.9 |
+| 6 | DIRECT_SENSITIVE (raw PII в SELECT), MASKING_REQUIRED, HALLUCINATED_*, EXCESSIVE_SCOPE, MISSING_REQUIRED_FILTER, BUSINESS_MISMATCH | ≥0.9 |
 | 5 | WRONG_JOIN_PATH, SELECT_STAR | ≥0.8 |
 | 4 | NO_PAGINATION, NON_SARGABLE_FILTER, UNSAFE_CAST | advisory |
 | 0 | нет рисков | n/a |
@@ -55,6 +56,7 @@ Hard-block (нельзя approve, ставь risk_score ≥ 8):
 - BROKEN_SQL, SYNTAX_BROKEN, UNBOUND_PLACEHOLDER (без bindings).
 - HALLUCINATED_TABLE / HALLUCINATED_COLUMN с confidence=1.0.
 - DIRECT_SENSITIVE (raw PII в проекции).
+- MISSING_REQUIRED_FILTER / BUSINESS_MISMATCH: задача просит обязательный период, статус, tenant/user scope или группировку, а SQL потерял это требование.
 - SQL_INJ_*, DML_NO_WHERE, DDL_FORBIDDEN, PRIV_ESCALATE, PLPGSQL_UNSAFE,
   MULTI_STATEMENT, COPY_EXPORT, TRUNCATE.
 
@@ -185,6 +187,33 @@ Output:
   "vulnerabilities": [],
   "overall_risk_score": 0,
   "summary": "одобрено: aggregate без проекции PII, фильтр по status"
+}
+
+### Example 6: missing required period
+
+Task: "Покажи активных клиентов по статусам за месяц"
+
+SQL:
+```
+SELECT sc.status, COUNT(*) AS client_count
+FROM sys_company sc
+WHERE sc.status = 1
+GROUP BY sc.status
+```
+
+Output:
+{
+  "vulnerabilities": [{
+    "vuln_class": "MISSING_REQUIRED_FILTER",
+    "risk_score": 6.5,
+    "description": "SQL не содержит обязательный фильтр периода из задачи за месяц.",
+    "recommendation": "Добавь WHERE по create_date/created_at, например create_date >= DATE_TRUNC('month', CURRENT_DATE).",
+    "confidence": 0.95,
+    "evidence_span": "за месяц",
+    "revision_note": "Добавь фильтр периода за месяц по разрешенной date-колонке."
+  }],
+  "overall_risk_score": 6.5,
+  "summary": "блок: SQL безопасен технически, но не отвечает обязательному периоду задачи"
 }
 
 Если задача была "сотрудники без персональных полей" и SQL был

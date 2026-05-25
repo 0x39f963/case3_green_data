@@ -205,6 +205,12 @@ def prompt_candidates_api(limit: int = 500) -> dict[str, Any]:
                 "selected": row.get("selected"),
                 "trace_id": row.get("trace_id"),
                 "temperature": row.get("temperature"),
+                "model": row.get("model"),
+                "prompt_key": row.get("prompt_key"),
+                "prompt_id": row.get("prompt_id"),
+                "prompt_version": row.get("prompt_version"),
+                "prompt_sha256": row.get("prompt_sha256"),
+                "business_alignment_labels": row.get("business_alignment_labels") or [],
             }
         )
     for values in series.values():
@@ -271,6 +277,7 @@ def _prompt_candidate_rows(limit: int) -> list[dict[str, Any]]:
                 selected = _candidate_selected(cand, idx, selected_index)
                 score = _candidate_quality(cand, selected, approved)
                 prompt_key = _prompt_key(meta)
+                business_labels = _candidate_business_labels(cand)
                 rows.append(
                     {
                         "row_id": trace_id + ":" + str(iteration) + ":" + str(idx),
@@ -297,6 +304,9 @@ def _prompt_candidate_rows(limit: int) -> list[dict[str, Any]]:
                         "prompt_user": cand.get("prompt_user") or details.get("prompt_user") or "",
                         "sql": cand.get("sql") or cand.get("response") or "",
                         "quality_score": score,
+                        "business_alignment_labels": business_labels,
+                        "business_alignment_findings": _candidate_business_findings(cand),
+                        "selector_reason": _candidate_selector_reason(cand),
                     }
                 )
                 if len(rows) >= limit:
@@ -363,6 +373,7 @@ def _candidate_selected(cand: dict[str, Any], idx: int, selected_index: int | No
 def _candidate_quality(cand: dict[str, Any], selected: bool, approved: bool) -> int:
     score_data = cand.get("selector_score") if isinstance(cand.get("selector_score"), dict) else {}
     labels = score_data.get("labels") if isinstance(score_data.get("labels"), list) else []
+    business_labels = _candidate_business_labels(cand)
     score = 65
     if selected:
         score += 18
@@ -370,8 +381,37 @@ def _candidate_quality(cand: dict[str, Any], selected: bool, approved: bool) -> 
         score += 12
     if score_data.get("broken"):
         score = min(score, 25)
+    if business_labels:
+        score = min(score, 45)
     score -= min(len(labels) * 8, 32)
+    score -= min(len(business_labels) * 12, 30)
     return max(0, min(100, int(score)))
+
+
+def _candidate_business_findings(cand: dict[str, Any]) -> list[dict[str, Any]]:
+    score_data = cand.get("selector_score") if isinstance(cand.get("selector_score"), dict) else {}
+    raw = cand.get("business_alignment_findings") or score_data.get("business_alignment_findings") or []
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def _candidate_business_labels(cand: dict[str, Any]) -> list[str]:
+    score_data = cand.get("selector_score") if isinstance(cand.get("selector_score"), dict) else {}
+    raw = score_data.get("business_alignment_labels")
+    if isinstance(raw, list):
+        return [str(item) for item in raw if item]
+    labels: list[str] = []
+    for item in _candidate_business_findings(cand):
+        label = str(item.get("vuln_class") or item.get("label") or "").strip()
+        if label and label not in labels:
+            labels.append(label)
+    return labels
+
+
+def _candidate_selector_reason(cand: dict[str, Any]) -> str:
+    score_data = cand.get("selector_score") if isinstance(cand.get("selector_score"), dict) else {}
+    return str(cand.get("selector_reason") or score_data.get("selector_reason") or "")
 
 
 def _prompt_key(meta: dict[str, Any]) -> str:

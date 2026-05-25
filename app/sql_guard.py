@@ -25,6 +25,7 @@ if str(_TASK3_ROOT) not in sys.path:
 
 from baseline1 import Vulnerability  # noqa: E402
 
+from app import business_alignment  # noqa: E402
 from app.ast_forbidden_check import check_forbidden_commands  # noqa: E402
 from app.ast_pii_masking import check_pii_masking  # noqa: E402
 from app import sql_parsing  # noqa: E402
@@ -75,6 +76,8 @@ SQL_EXTENSION_LABELS = frozenset(
         "WRONG_JOIN_PATH",
         "UNSAFE_CAST",
         "AMBIGUOUS_USER_SCOPE",
+        "MISSING_REQUIRED_FILTER",
+        "BUSINESS_MISMATCH",
     }
 )
 
@@ -135,6 +138,8 @@ SECURITY_LABELS = frozenset(
         "WRONG_JOIN_PATH",
         "SCHEMA_OVERLAY_MISSING",
         "AMBIGUOUS_USER_SCOPE",
+        "MISSING_REQUIRED_FILTER",
+        "BUSINESS_MISMATCH",
         "EXCESSIVE_SCOPE",
         "PROMPT_INJECTION_SQL_POLICY_BYPASS",
         "PROMPT_SCHEMA_EXFIL",
@@ -230,6 +235,8 @@ SEVERITY_BY_LABEL: dict[str, float] = {
     "INSERT_UNSAFE": 7.0,
     "SELECT_STAR": 5.0,
     "NO_PAGINATION": 4.0,
+    "MISSING_REQUIRED_FILTER": 6.5,
+    "BUSINESS_MISMATCH": 6.5,
     "CROSS_JOIN_EXPLOSION": 7.0,
     "COST_DOS": 7.0,
     "NON_SARGABLE_FILTER": 3.0,
@@ -256,6 +263,8 @@ REVISION_NOTES: dict[str, str] = {
     "MASKING_DOWNGRADED": "Keep the masking class from safe_rewrite or drop the raw sensitive column.",
     "MASKING_TYPE_MISMATCH": "Use the same masking class as safe_rewrite for sensitive columns.",
     "NO_PAGINATION": "Add ORDER BY on a stable key and LIMIT 100 unless the task needs a full aggregate.",
+    "MISSING_REQUIRED_FILTER": "Add the required task filter to WHERE.",
+    "BUSINESS_MISMATCH": "Preserve mandatory task dimensions and filters.",
     "DML_NO_WHERE": "UPDATE/DELETE without WHERE is blocked; rewrite the analytic task as SELECT.",
     "MULTI_STATEMENT": "Return exactly one PostgreSQL SELECT statement without extra commands.",
     "SCHEMA_LEAK": "Do not read information_schema or pg_catalog; use provided schema_context.",
@@ -322,6 +331,7 @@ def check(sql: str, ctx: dict[str, Any] | None = None) -> list[Vulnerability]:
         check_data_exposure,
         check_reliability,
         check_generation_quality,
+        check_business_alignment,
     )
     for group in groups:
         findings.extend(group(sql, ctx))
@@ -831,6 +841,18 @@ def check_generation_quality(sql: str, ctx: dict[str, Any] | None = None) -> lis
     return findings
 
 
+def check_business_alignment(sql: str, ctx: dict[str, Any] | None = None) -> list[Vulnerability]:
+    """Check mandatory business constraints extracted from the user task."""
+    ctx = ctx or {}
+    parsed = sql_parsing.parse(sql)
+    if parsed.broken:
+        return []
+    requirements = ctx.get("business_requirements")
+    if not requirements:
+        requirements = business_alignment.extract_requirements(str(ctx.get("task", "")), ctx)
+    return business_alignment.check_business_alignment(sql, requirements, ctx)
+
+
 def placeholder_semantic(sql: str, ctx: dict[str, Any] | None = None) -> list[Vulnerability]:
     """
     Return semantic placeholders only when explicitly requested.
@@ -999,6 +1021,8 @@ RULES_BY_LABEL: dict[str, RuleFunc] = {
     "BROKEN_SQL": _only("BROKEN_SQL", check_generation_quality),
     "UNBOUND_PLACEHOLDER": _only("UNBOUND_PLACEHOLDER", check_runtime_contract),
     "UNSAFE_CAST": _only("UNSAFE_CAST", check_generation_quality),
+    "MISSING_REQUIRED_FILTER": _only("MISSING_REQUIRED_FILTER", check_business_alignment),
+    "BUSINESS_MISMATCH": _only("BUSINESS_MISMATCH", check_business_alignment),
     "EXCESSIVE_SCOPE": placeholder_semantic,
     "MASKING_REQUIRED": placeholder_semantic,
     "WRONG_JOIN_PATH": placeholder_semantic,

@@ -50,7 +50,18 @@ def test_prompt_candidates_api_extracts_generator_rows(tmp_path, monkeypatch) ->
                                     "sql": "SELECT 1;",
                                     "temperature": 0.6,
                                     "selected_by_selector": True,
-                                    "selector_score": {"labels": []},
+                                    "selector_score": {
+                                        "labels": ["MISSING_REQUIRED_FILTER"],
+                                        "business_alignment_labels": ["MISSING_REQUIRED_FILTER"],
+                                        "business_alignment_findings": [
+                                            {
+                                                "vuln_class": "MISSING_REQUIRED_FILTER",
+                                                "risk_score": 6.5,
+                                                "description": "missing month",
+                                            }
+                                        ],
+                                        "selector_reason": "rejected: blocking business alignment labels MISSING_REQUIRED_FILTER",
+                                    },
                                     "prompt_meta": {
                                         "prompt_id": "generator_system_v2",
                                         "prompt_type": "generator_system",
@@ -79,7 +90,13 @@ def test_prompt_candidates_api_extracts_generator_rows(tmp_path, monkeypatch) ->
     assert data["rows"][1]["temperature"] == 0.6
     assert data["rows"][1]["selected"] is True
     assert data["rows"][1]["prompt_key"] == "generator_system_v2@v2"
-    assert data["prompt_series"]["generator_system_v2@v2"][1]["quality_score"] >= 90
+    assert data["rows"][1]["business_alignment_labels"] == ["MISSING_REQUIRED_FILTER"]
+    assert data["prompt_series"]["generator_system_v2@v2"][1]["temperature"] == 0.6
+    assert data["prompt_series"]["generator_system_v2@v2"][1]["prompt_key"] == "generator_system_v2@v2"
+    assert data["prompt_series"]["generator_system_v2@v2"][1]["prompt_version"] == 2
+    assert data["prompt_series"]["generator_system_v2@v2"][1]["business_alignment_labels"] == [
+        "MISSING_REQUIRED_FILTER"
+    ]
 
 
 def test_prompt_candidates_page_has_grid_and_menu_link() -> None:

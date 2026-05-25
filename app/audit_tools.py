@@ -82,6 +82,13 @@ def check_generation_quality(sql: str, ctx: dict[str, Any] | None = None) -> lis
 
 
 @tool
+def check_business_alignment(sql: str, ctx: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Проверить обязательные бизнес-constraints из задачи."""
+    labels = ("MISSING_REQUIRED_FILTER", "BUSINESS_MISMATCH")
+    return _pack(sql_guard.check_by_labels(sql, labels, ctx))
+
+
+@tool
 def judge_sensitive_exposure(sql: str, ctx: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Judge tool для MASKING_REQUIRED и EXCESSIVE_SCOPE."""
     return judge_semantic_correction.invoke({"sql": sql, "ctx": ctx or {}})

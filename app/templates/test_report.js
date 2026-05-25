@@ -897,6 +897,14 @@ function renderCandidatePrompt(item) {
 }
 
 function renderCandidateCard(item) {
+  const alignFindings = Array.isArray(item.business_alignment_findings) ? item.business_alignment_findings : [];
+  const alignLabels = alignFindings.map((row) => riskLabel(row)).filter(Boolean);
+  const alignBlock = alignFindings.length
+    ? `<div class="prompt-hit__business">Business alignment: ${escapeHtml([...new Set(alignLabels)].join(", "))}</div>`
+    : "";
+  const reasonBlock = item.selector_reason
+    ? `<div class="prompt-hit__sub">${escapeHtml(item.selector_reason)}</div>`
+    : "";
   return `
     <article class="prompt-part">
       <header class="prompt-part__head">
@@ -904,6 +912,8 @@ function renderCandidateCard(item) {
         <span class="prompt-part__label">${item.selected ? winnerBadgeHtml(item) : "candidate"}</span>
         <span class="prompt-part__source">${escapeHtml(candidateMetaLine(item))}</span>
       </header>
+      ${reasonBlock}
+      ${alignBlock}
       <pre class="prompt-part__text mono">${escapeHtml(item.sql || item.response_raw || "")}</pre>
     </article>
   `;

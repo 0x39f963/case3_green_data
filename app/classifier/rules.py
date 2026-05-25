@@ -22,6 +22,7 @@ RULE_TOOLS = [
     audit_tools.check_data_exposure,
     audit_tools.check_reliability,
     audit_tools.check_generation_quality,
+    audit_tools.check_business_alignment,
 ]
 
 

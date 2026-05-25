@@ -23,6 +23,11 @@
       "business_meaning": "SQL технически не готов к выполнению.",
       "trigger": "Срабатывает, когда parser или EXPLAIN sandbox не может разобрать запрос."
     },
+    "BUSINESS_MISMATCH": {
+      "identifier": "BUSINESS_MISMATCH",
+      "business_meaning": "SQL не сохраняет обязательный смысл бизнес-задачи.",
+      "trigger": "Срабатывает, когда пользователь просит группировку, статус, период или другой обязательный бизнес-constraint, а SQL строит другой срез."
+    },
     "COMMENT_TRUNCATION": {
       "identifier": "COMMENT_TRUNCATION",
       "business_meaning": "Комментарий может скрыть важную часть условия.",
@@ -107,6 +112,11 @@
       "identifier": "MASKING_REQUIRED",
       "business_meaning": "Данные можно использовать, но нельзя показывать в сыром виде.",
       "trigger": "Срабатывает, когда задача допускает работу с персональными или чувствительными полями, но SQL выводит их без маски или агрегата."
+    },
+    "MISSING_REQUIRED_FILTER": {
+      "identifier": "MISSING_REQUIRED_FILTER",
+      "business_meaning": "SQL потерял обязательный фильтр из задачи.",
+      "trigger": "Срабатывает, когда задача содержит период, активный статус или другой обязательный фильтр, но WHERE не ограничивает данные этим условием."
     },
     "MULTI_STATEMENT": {
       "identifier": "MULTI_STATEMENT",
