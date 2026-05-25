@@ -1,0 +1,394 @@
+{% extends "_shell.html" %}
+
+{% block title %}AI SQL Security Pipeline Chat{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/web/assets/web_chat.css?v={{ asset_version }}">
+<script src="/web/audits/static/sql_event_specs.js?v={{ asset_version }}"></script>
+{% endblock %}
+
+{% block content %}
+<section id="view-chat" class="view chat-view{% if active_section != 'chat' %} hidden{% endif %}">
+  <div class="card chat-header">
+    <div class="chat-header__main">
+      <span class="chat-header__logo" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </span>
+      <h1 class="chat-header__title">AI SQL Security Pipeline Chat</h1>
+      <span class="pill pill-blue mono" id="chat-id-pill">chat_pending</span>
+      <span class="pill pill-blue" id="thread-state-pill">DRAFT</span>
+    </div>
+    <div class="chat-header__side">
+      <div class="chat-header__buttons">
+        <button id="refresh-btn" class="btn" type="button">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15A9 9 0 1 1 18.36 6.64L23 10"/></svg>
+          Refresh
+        </button>
+        <a id="new-chat-btn" class="btn btn-primary" href="/chat/new" target="_blank" rel="noopener" title="Открывается в новой вкладке для параллельных runs">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New chat
+        </a>
+      </div>
+      <div class="chat-header__pills">
+        <span class="chat-header__pill"><span class="chat-header__pill-label">Env</span><span class="chat-header__pill-value" id="env-pill-value">{{ env_label or "local" }}</span></span>
+        <span class="chat-header__pill"><span class="chat-header__pill-label">Model</span><span class="chat-header__pill-value mono" id="model-pill-value">—</span></span>
+      </div>
+    </div>
+    <a id="trace-link" class="hidden" href="#" target="_blank" rel="noreferrer" aria-hidden="true"></a>
+    <span id="page-title" class="hidden" aria-hidden="true">Новый чат</span>
+    <span id="mode-pill" class="hidden" aria-hidden="true"></span>
+  </div>
+
+  <div class="card meta-panel" id="chatMetaPanel">
+    <div class="meta-grid meta-grid--chat">
+      <div class="meta-cell"><div class="meta-label">Chat ID</div><div class="meta-value mono" id="meta-chat-id">—</div></div>
+      <div class="meta-cell"><div class="meta-label">Contour</div><div class="meta-value strong" id="meta-mode">—</div></div>
+      <div class="meta-cell"><div class="meta-label">Generator</div><div class="meta-value strong" id="meta-backend">—</div></div>
+      <div class="meta-cell"><div class="meta-label">Provider Model</div><div class="meta-value strong mono" id="meta-model">—</div></div>
+      <div class="meta-cell"><div class="meta-label">Auditor</div><div class="meta-value" id="meta-auditor">—</div></div>
+      <div class="meta-cell"><div class="meta-label">Last Trace</div><div class="meta-value mono" id="meta-trace">—</div></div>
+      <div class="meta-cell"><div class="meta-label">Last Status</div><div class="meta-value strong" id="meta-status">DRAFT</div></div>
+    </div>
+    <div class="meta-config-banner hidden" id="meta-config-banner"></div>
+  </div>
+  <input type="hidden" id="meta-iterations" value="5">
+  <input type="hidden" id="meta-updated">
+  <input type="hidden" id="meta-screen" value="Chat">
+
+
+  <div class="chat-workspace">
+    <section class="chat-thread">
+      <article class="card chat-request" id="requestCard">
+        <header class="chat-thread__head">
+          <div class="panel-title">
+            <span class="panel-num">1</span>
+            Original User Request
+          </div>
+        </header>
+        <div class="chat-request__body" id="requestBody">
+          <div class="chat-request__empty" id="requestEmpty">
+            <p class="text-muted">Введите задачу аналитика, чтобы запустить pipeline.</p>
+            <div class="chat-examples">
+              <button class="chat-example-chip" type="button">Покажи активных клиентов по статусам за месяц</button>
+              <button class="chat-example-chip" type="button">Сформируй безопасный отчёт по сотрудникам без персональных полей</button>
+              <button class="chat-example-chip" type="button">Проверь запрос на риск SELECT *</button>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card chat-response hidden" id="responseCard">
+        <header class="chat-response__head">
+          <div class="chat-response__head-left">
+            <div class="panel-title">Pipeline Response</div>
+            <span class="pill pill-slate" id="responseStatusPill">DRAFT</span>
+          </div>
+          <div class="chat-response__head-right">
+            <span class="chat-response__head-meta" id="responseIter">Iter —/5</span>
+            <span class="chat-response__head-meta mono" id="responseTime">—</span>
+          </div>
+        </header>
+
+        <div class="chat-response__sql-area" id="responseSqlArea">
+          <div class="chat-response__sql-placeholder" id="responseSqlPlaceholder">
+            <span class="chat-response__spinner" aria-hidden="true"></span>
+            <div class="chat-response__placeholder-title" id="responseSqlPlaceholderTitle">SQL ещё не сгенерирован</div>
+            <div class="chat-response__placeholder-sub" id="responseSqlPlaceholderSub">Пайплайн выполняет генерацию и валидацию SQL.</div>
+          </div>
+          <div class="chat-response__sql-block hidden" id="responseSqlBlock">
+            <div class="codebox-toolbar">
+              <span class="panel-title"><span class="panel-num">SQL</span>Final SQL</span>
+              <button class="codebox-copy" type="button" data-action="copy-sql">Copy</button>
+            </div>
+            <pre class="codebox scrollbar-thin mono" id="responseSql"></pre>
+          </div>
+        </div>
+
+        <div class="chat-response__metrics">
+          <div class="metric-tile">
+            <div class="metric-label">Tokens</div>
+            <div class="metric-value tone-neutral" id="metricTokens">—</div>
+            <div class="metric-sub" id="metricTokensSub">Generated</div>
+          </div>
+          <div class="metric-tile">
+            <div class="metric-label">Latency</div>
+            <div class="metric-value tone-neutral" id="metricLatency">—</div>
+            <div class="metric-sub" id="metricLatencySub">Elapsed</div>
+          </div>
+          <div class="metric-tile">
+            <div class="metric-label">Iterations</div>
+            <div class="metric-value tone-neutral" id="metricIterations">—</div>
+            <div class="metric-sub" id="metricIterationsSub">Current / Max</div>
+          </div>
+          <button class="metric-tile metric-tile--link" id="metricDecisionTile" type="button" disabled>
+            <div class="metric-label">Decision</div>
+            <div class="metric-value tone-neutral" id="metricDecision">—</div>
+            <div class="metric-sub" id="metricDecisionSub">Awaiting checks</div>
+          </button>
+        </div>
+
+        <div class="chat-response__actions">
+          <a class="btn" id="actionReport" href="#" target="_blank" rel="noreferrer" aria-disabled="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>
+            Open detail report
+          </a>
+          <button class="btn" type="button" id="actionCopySql" data-action="copy-sql" disabled>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy SQL
+          </button>
+          <button class="btn" type="button" id="actionRerun" data-action="re-run" disabled>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15A9 9 0 1 1 18.36 6.64L23 10"/></svg>
+            Re-run
+          </button>
+          <button class="btn" type="button" id="actionPrompts" disabled>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h10"/></svg>
+            Runtime prompts
+          </button>
+        </div>
+      </article>
+
+      <form class="card chat-composer" id="composer">
+        <div class="chat-composer__row">
+          <label class="field">
+            <span class="field-label">Runtime preset</span>
+            <select class="field-select" id="model-select"></select>
+            <span class="chat-composer__hint" id="preset-hint"></span>
+          </label>
+          <label class="field hidden" id="provider-field">
+            <span class="field-label">OpenRouter provider</span>
+            <select class="field-select" id="provider-select"></select>
+            <span class="chat-composer__hint" id="provider-hint"></span>
+          </label>
+          <label class="field">
+            <span class="field-label">Judge (Stage 4)</span>
+            <select class="field-select" id="judge-select"></select>
+            <span class="chat-composer__hint" id="judge-hint"></span>
+          </label>
+          <label class="field hidden" id="judge-provider-field">
+            <span class="field-label">Judge OpenRouter provider</span>
+            <select class="field-select" id="judge-provider-select"></select>
+            <span class="chat-composer__hint" id="judge-provider-hint"></span>
+          </label>
+        </div>
+        <div class="chat-composer__row chat-composer__row--prompt-check">
+          <label class="field field-switch">
+            <span class="field-label">Request ingestion</span>
+            <span class="switch-line">
+              <input id="prompt-check-enabled" type="checkbox" checked>
+              <span>Поиск инъекций</span>
+            </span>
+            <span class="chat-composer__hint" id="prompt-check-enabled-hint">Включено для safety-метрик.</span>
+          </label>
+          <label class="field" id="prompt-check-field">
+            <span class="field-label">Prompt-check preset</span>
+            <select class="field-select" id="prompt-check-select"></select>
+            <span class="chat-composer__hint" id="prompt-check-hint"></span>
+          </label>
+          <label class="field hidden" id="prompt-check-provider-field">
+            <span class="field-label">Prompt-check OpenRouter provider</span>
+            <select class="field-select" id="prompt-check-provider-select"></select>
+            <span class="chat-composer__hint" id="prompt-check-provider-hint"></span>
+          </label>
+        </div>
+        <select class="hidden" id="mode-select" aria-hidden="true" tabindex="-1">
+          <option value="prod_demo">prod_demo</option>
+          <option value="local_openai">local_openai</option>
+          <option value="mixed">mixed</option>
+          <option value="dev_local">dev_local</option>
+          <option value="claude_cli">claude_cli</option>
+          <option value="codex_cli">codex_cli</option>
+        </select>
+        <div class="chat-composer__editor">
+          <textarea id="task-input" rows="3" maxlength="4000" placeholder="Введите задачу аналитика..."></textarea>
+        </div>
+        <div class="chat-timeline-horizontal hidden" id="timelineHorizontal" aria-live="polite">
+          <div class="chat-timeline-horizontal__bar" id="timelineHorizontalBar"></div>
+          <div class="chat-timeline-horizontal__legend" id="timelineHorizontalLegend"></div>
+        </div>
+        <div class="chat-composer__bar">
+          <span class="chat-composer__count text-muted"><span id="task-input-count">0</span> / 4000</span>
+          <button class="btn btn-primary" id="send-btn" type="submit">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            <span id="send-btn-label">Отправить</span>
+          </button>
+        </div>
+        <input type="hidden" id="max-iterations" value="5">
+      </form>
+    </section>
+
+    <aside class="chat-timeline card" id="timelineCard">
+      <header class="chat-timeline__head">
+        <div class="panel-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+          Pipeline Timeline
+        </div>
+        <span class="chat-timeline__total" id="timelineTotal">—</span>
+      </header>
+      <div class="chat-timeline__steps" id="timelineVertical"></div>
+      <a id="timelineDetailLink" class="btn btn-ghost chat-timeline__detail-link hidden" href="#" target="_blank" rel="noreferrer">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>
+        Open detail report
+      </a>
+      <!-- inspector-content оставлен скрытым: web_chat.js всё ещё пишет туда
+           inspector-rows; они не отрисовываются, но логика не падает. -->
+      <div class="hidden" id="inspector-content"></div>
+    </aside>
+  </div>
+
+  <div class="card chat-footer">
+    <div class="chat-footer__brand">
+      <span class="chat-footer__brand-icon" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </span>
+      SQL Security Pipeline
+    </div>
+    <div class="chat-footer__pills">
+      <span class="chat-header__pill"><span class="chat-header__pill-label">Env:</span><span class="chat-header__pill-value" id="env-pill-value-footer">{{ env_label or "local" }}</span></span>
+      <span class="chat-header__pill"><span class="chat-header__pill-label">Model:</span><span class="chat-header__pill-value mono" id="model-pill-value-footer">—</span></span>
+    </div>
+  </div>
+</section>
+
+<div class="prompt-drawer-overlay" id="promptDrawerOverlay"></div>
+<aside class="prompt-drawer" id="promptDrawer" aria-hidden="true" aria-labelledby="promptDrawerTitle">
+  <div class="prompt-drawer__head">
+    <div>
+      <div class="prompt-drawer__title" id="promptDrawerTitle">Runtime prompts</div>
+      <div class="prompt-drawer__subtitle" id="promptDrawerSubtitle">System and assembled prompts for this run</div>
+    </div>
+    <button class="prompt-drawer__close" id="promptDrawerClose" type="button" aria-label="Close prompt drawer">x</button>
+  </div>
+  <div class="prompt-drawer__tabs" id="promptDrawerTabs">
+    <button class="prompt-drawer__tab is-active" type="button" data-prompt-tab="prompt">Prompt</button>
+    <button class="prompt-drawer__tab" type="button" data-prompt-tab="sources">Sources</button>
+    <button class="prompt-drawer__tab" type="button" data-prompt-tab="json">JSON</button>
+  </div>
+  <div class="prompt-drawer__body scrollbar-thin" id="promptDrawerBody"></div>
+</aside>
+
+<section id="view-history" class="view chat-view{% if active_section != 'history' %} hidden{% endif %}">
+  <div class="card chat-header">
+    <div class="chat-header__main">
+      <span class="chat-header__logo" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+      </span>
+      <h1 class="chat-header__title">История запросов</h1>
+      <span class="pill pill-blue" id="history-count">—</span>
+    </div>
+    <div class="chat-header__side">
+      <div class="chat-header__buttons"></div>
+      <div class="chat-header__pills">
+        <span class="chat-header__pill"><span class="chat-header__pill-label">Source</span><span class="chat-header__pill-value">web + import</span></span>
+      </div>
+    </div>
+  </div>
+  <div class="card chat-history">
+    <div class="panel-title">
+      <span class="panel-num">1</span>
+      Run History
+    </div>
+    <div class="chat-history__filters">
+      <label class="field chat-history__search">
+        <span class="field-label">Поиск</span>
+        <input class="field-input" id="history-search" type="search" placeholder="Задача или trace_id">
+      </label>
+      <label class="field chat-history__status">
+        <span class="field-label">Статус</span>
+        <select class="field-select" id="history-filter">
+          <option value="all">Все статусы</option>
+          <option value="approved">Approved</option>
+          <option value="needs_review">Needs review</option>
+          <option value="failed">Failed</option>
+          <option value="draft">Draft</option>
+        </select>
+      </label>
+    </div>
+    <div id="history-list" class="chat-history__list"></div>
+  </div>
+</section>
+
+<section id="view-prompts" class="view chat-view{% if active_section != 'prompts' %} hidden{% endif %}">
+  <div class="card chat-header">
+    <div class="chat-header__main">
+      <span class="chat-header__logo" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h10"/><path d="M18 16l2 2 3-4"/></svg>
+      </span>
+      <h1 class="chat-header__title">System Prompts</h1>
+      <span class="pill pill-blue" id="prompts-count">—</span>
+    </div>
+    <div class="chat-header__side">
+      <div class="chat-header__buttons">
+        <button class="btn" type="button" id="prompts-refresh-btn">Refresh</button>
+        <button class="btn btn-primary" type="button" id="prompt-new-btn">New draft</button>
+      </div>
+      <div class="chat-header__pills">
+        <span class="chat-header__pill"><span class="chat-header__pill-label">Registry</span><span class="chat-header__pill-value">Postgres</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="prompts-layout">
+    <section class="card prompts-list-card">
+      <div class="prompts-toolbar">
+        <label class="field">
+          <span class="field-label">prompt type</span>
+          <select class="field-select" id="prompt-type-filter"></select>
+        </label>
+      </div>
+      <div id="prompts-list" class="prompts-list"></div>
+    </section>
+
+    <section class="card prompt-editor-card">
+      <div class="prompt-editor-head">
+        <div>
+          <div class="panel-title">Prompt Version</div>
+          <div class="prompt-editor-sub mono" id="prompt-editor-id">—</div>
+        </div>
+        <div class="prompt-editor-badges" id="prompt-editor-badges"></div>
+      </div>
+
+      <div class="prompt-editor-grid">
+        <label class="field">
+          <span class="field-label">type</span>
+          <select class="field-select" id="prompt-editor-type"></select>
+        </label>
+        <label class="field">
+          <span class="field-label">name</span>
+          <input class="field-input" id="prompt-editor-name" type="text" maxlength="200">
+        </label>
+      </div>
+      <div class="prompt-type-explainer" id="prompt-editor-description">
+        Выберите prompt type, чтобы увидеть, где он используется в pipeline.
+      </div>
+
+      <label class="field">
+        <span class="field-label">notes</span>
+        <input class="field-input" id="prompt-editor-notes" type="text" maxlength="4000">
+      </label>
+
+      <label class="field">
+        <span class="field-label">text</span>
+        <textarea class="codebox prompt-editor-text mono scrollbar-thin" id="prompt-editor-text" spellcheck="false"></textarea>
+      </label>
+
+      <div class="prompt-editor-meta">
+        <span class="mono" id="prompt-editor-sha">sha256: —</span>
+        <span id="prompt-editor-updated">updated: —</span>
+      </div>
+
+      <div class="prompt-editor-actions">
+        <button class="btn btn-primary" type="button" id="prompt-save-btn">Save draft</button>
+        <button class="btn" type="button" id="prompt-clone-btn">Clone</button>
+        <button class="btn" type="button" id="prompt-activate-btn">Activate</button>
+        <button class="btn" type="button" id="prompt-default-btn">Make default</button>
+        <button class="btn" type="button" id="prompt-archive-btn">Archive</button>
+        <span class="prompt-editor-status" id="prompt-editor-status"></span>
+      </div>
+    </section>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/web/assets/web_chat.js?v={{ asset_version }}"></script>
+{% endblock %}

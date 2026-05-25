@@ -1,0 +1,199 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://case3.local/sql-security/adversarial-sql-requests-v0.2.schema.json",
+  "$comment": "Generated at: 2026-05-18 16:49:50 MSK",
+  "title": "Case 3 Adversarial SQL Request Dataset Row v0.2",
+  "type": "object",
+  "required": [
+    "id",
+    "version",
+    "language",
+    "family",
+    "user_task",
+    "attack_prompt",
+    "seed_sql",
+    "safe_rewrite",
+    "schema_scope",
+    "expected_labels",
+    "expected_decision",
+    "expected_runtime_decision",
+    "evidence_span",
+    "faiss_targets",
+    "difficulty",
+    "source",
+    "source_seed_id",
+    "review_status"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^bench_req_[0-9]{6}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^v[0-9]+_[0-9]+$"
+    },
+    "language": {
+      "type": "string",
+      "enum": ["ru", "en"]
+    },
+    "family": {
+      "type": "string",
+      "enum": [
+        "safe_readonly_hard",
+        "classic_injection",
+        "union_schema_leak",
+        "dml_ddl_delete",
+        "sensitive_exposure",
+        "limit_bypass",
+        "cost_dos",
+        "hallucination_wrong_schema",
+        "prompt_policy_bypass",
+        "borderline_optimizer"
+      ]
+    },
+    "user_task": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "attack_prompt": {
+      "type": ["string", "null"],
+      "maxLength": 1000
+    },
+    "seed_sql": {
+      "type": ["string", "null"],
+      "maxLength": 2000
+    },
+    "safe_rewrite": {
+      "type": ["string", "null"],
+      "maxLength": 2000
+    },
+    "schema_scope": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "expected_labels": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "expected_decision": {
+      "type": "string",
+      "enum": ["approve", "revise", "abstain", "block"]
+    },
+    "expected_runtime_decision": {
+      "type": "string",
+      "enum": ["approve", "revise", "abstain"]
+    },
+    "expected_runtime_decision_alternatives": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["approve", "revise", "abstain"]
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "evidence_span": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "faiss_targets": {
+      "type": "object",
+      "required": ["generation", "security"],
+      "properties": {
+        "generation": {
+          "type": "object",
+          "required": ["expected_sources", "expected_table_names", "min_top_k"],
+          "properties": {
+            "expected_sources": {
+              "type": "array",
+              "items": {"type": "string", "enum": ["pg_pattern", "pg_docs", "schema"]},
+              "uniqueItems": true
+            },
+            "expected_table_names": {
+              "type": "array",
+              "items": {"type": "string"},
+              "uniqueItems": true
+            },
+            "min_top_k": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "security": {
+          "type": "object",
+          "required": ["expected_vuln_classes", "min_top_k"],
+          "properties": {
+            "expected_vuln_classes": {
+              "type": "array",
+              "items": {"type": "string"},
+              "uniqueItems": true
+            },
+            "min_top_k": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "difficulty": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "source": {
+      "type": "string",
+      "enum": ["template", "manual", "cli_generated", "imported"]
+    },
+    "source_seed_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "review_status": {
+      "type": "string",
+      "enum": ["draft", "validated", "approved"]
+    },
+    "limit_policy": {
+      "type": "object",
+      "properties": {
+        "required_limit_max": {"type": "integer", "minimum": 1},
+        "forbid_select_star": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "forbidden_objects": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "tags": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "i18n_paraphrases": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "vuln_class_unmapped": {
+      "type": "boolean",
+      "default": false,
+      "description": "true when expected_labels do not map to the FAISS security vuln_class taxonomy; expected_vuln_classes may be empty by design"
+    }
+  },
+  "additionalProperties": false
+}

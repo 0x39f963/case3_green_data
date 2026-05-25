@@ -145,6 +145,9 @@ services:
       - ${HOME:-/root}/.claude:/home/appuser/.claude:rw
       - ${HOME:-/root}/.codex:/home/appuser/.codex:rw
       - ${HOME:-/root}/.claude.json:/home/appuser/.claude.json:rw
+      # Локальный стенд берет уже установленные CLI с хоста, без npm pull при build.
+      - ${HOME:-/root}/.local/share/claude-code/package/claude:/usr/local/bin/claude:ro
+      - ${HOME:-/root}/.local/share/codex-cli/package/vendor/x86_64-unknown-linux-musl/codex/codex:/usr/local/bin/codex:ro
     # `host.docker.internal` нужен на случай, если local-llm-proxy запущен
     # на хосте, а не через профиль compose `local-llm`.
     extra_hosts:

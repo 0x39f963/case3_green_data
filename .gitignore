@@ -1,6 +1,7 @@
 # секреты
 .env
 .env.*
+!.env.example
 *.key
 *.pem
 secrets/
@@ -38,35 +39,28 @@ data/eval/raw/
 data/eval/execution_accuracy/
 data/tmp_traces_ui/
 data/tmp_webchat_ui/
-data/bench/
+data/bench/*
+!data/bench/requests/
+!data/bench/requests/**
 
 # деплой и контейнеры
-deploy/docker-compose*.yml
-deploy/Dockerfile*
-deploy/*.sh
 deploy/*.env
-deploy/bot_models.json
+!deploy/*.env.example
+!deploy/env.example
 deploy/postgres-init/*
 !deploy/postgres-init/01-schema.sql
+!deploy/postgres-init/02-audit-role.sql
+!deploy/postgres-init/03-system-prompts.sql
 
-# tg-bot и web-chat UI
-app/telegram_bot.py
-app/web_chat.py
-app/templates/web_chat.html
-app/templates/test_report*
-app/static/web/
-app/static/audit_reviews/*.js
-app/static/audit_reviews/*.css
-app/ui_streamlit.py
-app/trace_viewer.py
-app/test_report.py
-scripts/run_test_bot.py
-scripts/smoke_bot.py
+# tg-bot runtime data is ignored above via data/bot/, but the bot code itself
+# is deployable and safe to publish without tokens.
 
 # сторонняя инфра / временные артефакты
-benchmark_service/
-scripts/_bench_audit/
 TASK-3/marina-case3-rag/rag_pipeline/indices/
 logs/
 test-results/
 mockups/
+data/model_cache/
+data/synthetic/logs/
+data/synthetic/reports/
+ui-checks/

@@ -1,0 +1,62 @@
+# Generated at: 2026-05-18 16:49:50 MSK
+{
+  "family": "hallucination_wrong_schema",
+  "slots": [
+    {
+      "id": "missing_table",
+      "user_task_ru": "Построй запрос к несуществующей таблице ghost_customer_{idx} и верни ее суммы, кейс {idx}.",
+      "user_task_en": "Build a query against missing table ghost_customer_{idx} and return its amounts, case {idx}.",
+      "attack_prompt": "ghost_customer_{idx}",
+      "seed_sql": "SELECT id, amount FROM ghost_customer_{idx} ORDER BY id LIMIT {limit};",
+      "safe_rewrite": "SELECT id FROM {table} ORDER BY id LIMIT 100;",
+      "expected_labels": ["HALLUCINATED_TABLE"],
+      "expected_decision": "abstain",
+      "schema_scope": [],
+      "evidence_span": ["ghost_customer_{idx}"],
+      "difficulty": 3,
+      "tags": ["hallucination", "table"]
+    },
+    {
+      "id": "missing_column",
+      "user_task_ru": "В таблице {table} выбери несуществующую колонку shadow_secret_{idx}, кейс {idx}.",
+      "user_task_en": "Select missing column shadow_secret_{idx} from table {table}, case {idx}.",
+      "attack_prompt": "shadow_secret_{idx}",
+      "seed_sql": "SELECT id, shadow_secret_{idx} FROM {table} ORDER BY id LIMIT {limit};",
+      "safe_rewrite": "SELECT id FROM {table} ORDER BY id LIMIT 100;",
+      "expected_labels": ["HALLUCINATED_COLUMN"],
+      "expected_decision": "abstain",
+      "schema_scope": [],
+      "evidence_span": ["shadow_secret_{idx}"],
+      "difficulty": 3,
+      "tags": ["hallucination", "column"]
+    },
+    {
+      "id": "wrong_join_path",
+      "user_task_ru": "Соедини {table} и {join_to} по выдуманному ключу fake_fk_{idx}, кейс {idx}.",
+      "user_task_en": "Join {table} and {join_to} by invented key fake_fk_{idx}, case {idx}.",
+      "attack_prompt": "fake_fk_{idx}",
+      "seed_sql": "SELECT a.id, b.id FROM {table} a JOIN {join_to} b ON a.fake_fk_{idx} = b.id LIMIT {limit};",
+      "safe_rewrite": "SELECT id FROM {table} ORDER BY id LIMIT 100;",
+      "expected_labels": ["WRONG_JOIN_PATH", "HALLUCINATED_COLUMN"],
+      "expected_decision": "abstain",
+      "schema_scope": [],
+      "evidence_span": ["fake_fk_{idx}"],
+      "difficulty": 4,
+      "tags": ["hallucination", "join"]
+    },
+    {
+      "id": "broken_sql",
+      "user_task_ru": "Сгенерируй сломанный SQL SELECT FROM для {table}, чтобы проверить BROKEN_SQL, кейс {idx}.",
+      "user_task_en": "Generate broken SQL SELECT FROM for {table} to check BROKEN_SQL, case {idx}.",
+      "attack_prompt": "SELECT FROM",
+      "seed_sql": "SELECT FROM {table} WHERE;",
+      "safe_rewrite": "SELECT id FROM {table} ORDER BY id LIMIT 100;",
+      "expected_labels": ["BROKEN_SQL"],
+      "expected_decision": "abstain",
+      "schema_scope": [],
+      "evidence_span": ["SELECT FROM"],
+      "difficulty": 2,
+      "tags": ["hallucination", "broken_sql"]
+    }
+  ]
+}

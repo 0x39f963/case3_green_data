@@ -1,0 +1,331 @@
+{% extends "_shell.html" %}
+{% block title %}AI SQL Security Pipeline Report {{ run.run_id }}{% endblock %}
+{% block extra_head %}
+<script src="/web/audits/static/sql_event_specs.js"></script>
+<style>
+{% include "test_report.css" %}
+</style>
+{% endblock %}
+{% block content %}
+{% set status_label = report.status_label | default('abstain' if (report.needs_human | default(false)) else 'failed' if (report.error | default(false)) else 'success', true) %}
+{% set status_text = report.status_text | default('NEEDS REVIEW' if status_label == 'abstain' else 'FAILED' if status_label == 'failed' else 'COMPLETED', true) %}
+{% set verdict_tone = report.verdict_tone | default('warn' if status_label == 'abstain' else 'bad' if status_label == 'failed' else 'ok', true) %}
+{% set verdict_label = report.verdict_label | default('REVIEW' if status_label == 'abstain' else 'FAILED' if status_label == 'failed' else 'SAFE', true) %}
+{% set metadata_rows = report.metadata_rows if report.metadata_rows is defined else [] %}
+{% set metric_cards = report.metric_cards if report.metric_cards is defined else [] %}
+{% set events_stream = report.events_stream if report.events_stream is defined else [] %}
+{% set duration_segments = report.duration_segments if report.duration_segments is defined else [] %}
+{% set timeline_steps = report.timeline_steps if report.timeline_steps is defined else [] %}
+{% set prompt_timeline = report.prompt_timeline if report.prompt_timeline is defined else {} %}
+{% set prompt_items = prompt_timeline.get('items', []) if prompt_timeline.get is defined else [] %}
+{% set trace_duration_label = report.trace_duration_label | default(report.total_event_label | default('', true), true) %}
+{% set final_sql = report.final_sql | default('', true) %}
+{% set sql_lines = report.sql_lines if report.sql_lines is defined else final_sql.split('\n') %}
+{% set sql_line_count = report.sql_line_count | default(sql_lines | length, true) %}
+{% set diff_view = report.diff_view if report.diff_view is defined else none %}
+{% set ast_preview = report.ast_preview if report.ast_preview is defined else none %}
+{% set drawer_items = report.drawer_items if report.drawer_items is defined else {} %}
+<div class="max-w-[1680px] mx-auto px-3 sm:px-4 lg:px-5 py-3 space-y-2.5">
+    <div class="card report-header flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2.5">
+      <div class="flex items-center gap-2.5 flex-wrap min-w-0">
+        <div class="w-7 h-7 rounded-md bg-brand flex items-center justify-center text-white flex-shrink-0">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <h1 class="app-title text-[16px] font-semibold tracking-tight truncate">AI SQL Security Pipeline Report</h1>
+        <span class="pill pill-blue mono">{{ run.run_id }}</span>
+        <span class="pill {{ 'pill-green' if status_label == 'success' else 'pill-amber' if status_label == 'abstain' else 'pill-red' }}">{{ status_text }}</span>
+      </div>
+      <div class="header-actions flex items-center gap-1.5">
+        <button class="btn" type="button" data-export-report><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span class="btn-label">Export</span></button>
+        <button class="btn" type="button" data-open-json><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg><span class="btn-label">View JSON</span></button>
+      </div>
+    </div>
+
+    <div class="card meta-panel" id="metadata">
+      <div class="meta-grid">
+        {% for row in metadata_rows %}
+          {% for item in row %}
+          <div class="meta-cell">
+            <div class="meta-label">{{ item.label }}</div>
+            <div class="meta-value {{ 'strong' if item.label in ['Model', 'Duration', 'Status', 'Tokens'] else '' }} {{ 'mono' if item.label in ['Report ID', 'Run ID', 'Request ID', 'Model Version'] else '' }} truncate">{{ item.value }}</div>
+          </div>
+          {% endfor %}
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="report-grid grid grid-cols-1 lg:grid-cols-12 gap-2.5">
+      <div class="body-intro lg:col-span-8 space-y-2.5">
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5">
+          <div class="card p-3 md:col-span-5" id="request">
+            <div class="panel-title mb-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              Original User Request
+            </div>
+            <div class="request-card-text bg-soft-blue border-blue-soft rounded-md p-2.5 text-[12px] text-slate-700 leading-snug relative">
+              <span class="quote-left">“</span>
+              <span class="pl-4 block">{{ run.task }}</span>
+              <span class="quote-right">”</span>
+            </div>
+          </div>
+
+          <div class="card p-3 md:col-span-7" id="summary">
+            <div class="panel-title mb-2"><span class="panel-num">1</span>Summary</div>
+            <div class="summary-row">
+              <div class="summary-badge">
+                <div class="summary-shield {{ verdict_tone }}"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg></div>
+                <div class="summary-verdict {{ verdict_tone }}">{{ verdict_label }}</div>
+                <div class="summary-caption">Final Verdict</div>
+              </div>
+              <div class="text-[12px] text-slate-600 leading-snug flex-1">
+                {% if status_label == "success" %}The generated SQL passed all security policies and validation checks.{% elif status_label == "abstain" %}The run needs human review before the SQL can be treated as safe.{% else %}The generated SQL did not pass the security pipeline.{% endif %}
+              </div>
+            </div>
+            <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-3">
+              {% for item in metric_cards %}
+              <button type="button" class="metric-tile" data-detail="{{ item.drawer_key }}">
+                <div class="text-[10px] text-slate-500 mb-0.5">{{ item.label }}</div>
+                <div class="metric-value tone-{{ item.tone }}">{{ item.value }}</div>
+                <div class="metric-sub tone-{{ item.tone }}">{{ item.sub }}</div>
+              </button>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div class="card p-3" id="timing">
+          <div class="flex items-center justify-between mb-2">
+            <div class="panel-title"><span class="panel-num">2</span>Execution Time</div>
+            <div class="text-[11px] text-slate-500">Total: <span class="text-slate-700 font-semibold">{{ trace_duration_label }}</span></div>
+          </div>
+          <div class="flex w-full rounded-md overflow-hidden border border-soft">
+            {% for item in duration_segments %}
+            <button type="button" class="stack-seg" style="background:{{ item.color }};flex:{{ item.percent if item.percent > 0 else 0.4 }}" data-step-key="{{ item.drawer_key }}">{{ item.duration }}</button>
+            {% endfor %}
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5 mt-3 text-[11.5px]">
+            {% for item in duration_segments %}
+            <button type="button" class="legend-row" data-step-key="{{ item.drawer_key }}"><span class="flex items-center gap-1.5 truncate"><span class="legend-dot" style="background:{{ item.color }}"></span>{{ item.label }}</span><span class="text-slate-500 mono flex-shrink-0">{{ item.duration }}</span></button>
+            {% endfor %}
+          </div>
+        </div>
+
+        {% set latency_overview = report.latency_overview if report.latency_overview is defined else none %}
+        {% if latency_overview %}
+        <div class="card p-3" id="latency">
+          <div class="flex items-center justify-between mb-2">
+            <div class="panel-title"><span class="panel-num">L</span>Latency Breakdown<span class="text-[11px] font-normal text-slate-500 ml-1">(Phase 0 diagnostics)</span></div>
+            <button class="btn !py-0.5 !px-1.5 text-[11px]" type="button" data-detail="latency-calls">Full breakdown<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+          </div>
+
+          <div class="latency-grid">
+            {% for tile in latency_overview.tiles %}
+            <button type="button" class="latency-tile tone-{{ tile.tone }}" data-detail="{{ tile.drawer_key }}">
+              <div class="lat-label">{{ tile.label }}</div>
+              <div class="lat-value">{{ tile.value }}</div>
+              <div class="lat-sub">{{ tile.sub }}</div>
+            </button>
+            {% endfor %}
+          </div>
+
+          {% if latency_overview.slowest %}
+          <div class="latency-rows">
+            {% for span in latency_overview.slowest %}
+            <button type="button" class="latency-row tone-{{ span.tone }}" data-detail="{{ span.drawer_key }}">
+              <span class="lr-rank">{{ loop.index }}</span>
+              <span class="lr-main">
+                <span class="lr-name">{{ span.name }}</span>
+                {% for chip in span.chips %}<span class="pill {{ chip.cls }} text-[10px] !py-[1px] !px-1.5">{{ chip.text }}</span>{% endfor %}
+              </span>
+              <span class="lr-time">{{ span.time_label }}</span>
+              <span class="lr-bar-wrap"><span class="lr-bar" style="width:{{ span.bar_pct }}%"></span></span>
+            </button>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="text-[11.5px] text-slate-500" style="padding:8px 4px">
+            Нет данных по отдельным LLM-вызовам. Запусти свежий <code>/run</code> на этой задаче — Phase 0 инструментирование пишет walltime/usage/retries в каждый вызов и они появятся здесь.
+          </div>
+          {% endif %}
+
+          <div class="latency-footer">
+            <span>Pipeline total: <span class="mono text-slate-700 font-semibold">{{ latency_overview.total_label }}</span> · сумма LLM-вызовов <span class="mono">{{ latency_overview.llm_total_label }}</span></span>
+            <span class="lf-actions">
+              {% for action in latency_overview.actions %}
+              <button class="btn !py-0.5 !px-1.5 text-[11px]" type="button" data-detail="{{ action.drawer_key }}">{{ action.label }}</button>
+              {% endfor %}
+            </span>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="wide-row-sql grid grid-cols-1 md:grid-cols-2 gap-2.5">
+        <div class="card p-3" id="sql">
+          <div class="flex items-start justify-between mb-2">
+            <div class="panel-title"><span class="panel-num">3</span>Final SQL<span class="text-[11px] font-normal text-slate-500 ml-1">(PostgreSQL)</span></div>
+            <button class="btn !py-0.5 !px-1.5 text-[11px]" type="button" data-copy-sql><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button>
+          </div>
+          <div class="mono codebox scrollbar-thin sql-codebox" data-sql-text="{{ final_sql | e }}">
+            {% for line in sql_lines %}<div><span class="row-num">{{ loop.index }}</span>{{ line }}</div>{% endfor %}
+          </div>
+          <div class="text-right text-[10px] text-slate-400 mt-1" data-sql-line-count>{{ sql_line_count }} lines</div>
+        </div>
+
+        <div class="card p-3" id="diff">
+          <div class="flex items-center justify-between mb-2">
+            <div class="panel-title"><span class="panel-num">4</span>Iteration Diff<span class="text-[11px] font-normal text-slate-500 ml-1">(v1 -> v2)</span></div>
+            <button class="btn !py-0.5 !px-1.5 text-[11px]" type="button" data-detail="diff">Unified<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div class="diff-pane diff-rej">
+              <div class="diff-title">v1 (Rejected)</div>
+              <div class="mono py-1.5">
+                {% if diff_view and diff_view.left_lines is defined %}
+                  {% for line in diff_view.left_lines %}<div class="diff-line {{ 'del' if line.tone == 'del' else '' }}">{{ line.text }}</div>{% endfor %}
+                {% else %}
+                  <div class="diff-line">No rejected iteration was recorded.</div>
+                {% endif %}
+              </div>
+            </div>
+            <div class="diff-pane diff-acc">
+              <div class="diff-title">v2 (Final)</div>
+              <div class="mono py-1.5">
+                {% if diff_view and diff_view.right_lines is defined %}
+                  {% for line in diff_view.right_lines %}<div class="diff-line {{ 'add' if line.tone == 'add' else '' }}">{{ line.text }}</div>{% endfor %}
+                {% else %}
+                  {% for line in sql_lines[:10] %}<div class="diff-line add">+ {{ line }}</div>{% endfor %}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wide-row-plan grid grid-cols-1 md:grid-cols-2 gap-2.5">
+        <div class="card p-3" id="diagnostics">
+          <div class="flex items-start justify-between mb-2">
+            <div class="panel-title"><span class="panel-num">5</span>AST<span class="text-[11px] font-normal text-slate-500 ml-1">(Final)</span></div>
+            <button class="btn !py-0.5 !px-1.5" type="button" data-detail="ast"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+          </div>
+          <div class="inline-json" data-json-inline="ast"></div>
+          <div class="text-right text-[10px] text-slate-400 mt-1">read-only JSON</div>
+        </div>
+
+        <div class="card p-3" id="explain">
+          <div class="flex items-center justify-between mb-2">
+            <div class="panel-title"><span class="panel-num">6</span>EXPLAIN Plan<span class="text-[11px] font-normal text-slate-500 ml-1">(PostgreSQL)</span></div>
+            <button class="btn !py-0.5 !px-1.5 text-[11px]" type="button" data-detail="explain">Format: JSON<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+          </div>
+          <div class="inline-json" data-json-inline="explain"></div>
+        </div>
+      </div>
+
+      {% if prompt_items %}
+      <div class="events-row card p-3" id="prompt-timeline">
+        <div class="flex items-center justify-between mb-2">
+          <div class="panel-title"><span class="panel-num">P</span>Prompt Timeline</div>
+          <div class="text-[11px] text-slate-500">{{ prompt_items | length }} exchanges</div>
+        </div>
+        <div class="prompt-mini-list">
+          {% for prompt in prompt_items[:8] %}
+          <button type="button" class="prompt-row" data-detail="{{ prompt.key }}">
+            <span class="legend-dot" style="background:#1d4ed8"></span>
+            <span class="mono text-slate-500 event-time">{{ prompt.node }}</span>
+            <span class="pill pill-blue text-[10px] !py-[1px] !px-1.5">{{ 'v' ~ prompt.prompt_version if prompt.prompt_version is not none else 'legacy' }}</span>
+            <span class="truncate">{{ prompt.prompt_type or prompt.title }}</span>
+            <span class="mono text-slate-500">{{ (prompt.prompt_sha256 or '')[:10] }}</span>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="events-row card p-3" id="events">
+        <div class="flex items-center justify-between mb-2">
+          <div class="panel-title"><span class="panel-num">7</span>Events Stream</div>
+          <div class="seg text-[11px]">
+            <button class="kbd-tab active" type="button" data-event-filter="all">All</button>
+            <button class="kbd-tab" type="button" data-event-filter="info">Info</button>
+            <button class="kbd-tab" type="button" data-event-filter="warning">Warning</button>
+            <button class="kbd-tab" type="button" data-event-filter="error">Error</button>
+          </div>
+        </div>
+        <div class="space-y-1">
+          {% for event in events_stream[:9] %}
+          <button type="button" class="event-row" data-level="{{ event.level }}" data-detail="{{ event.drawer_key }}"><span class="legend-dot" style="background:#3b82f6"></span><span class="mono text-slate-500 event-time">{{ event.time }}</span><span class="pill ev-info text-[10px] !py-[1px] !px-1.5">{{ event.level|upper }}</span><span class="mono truncate">{{ event.name }}</span></button>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="body-timeline timeline-rail lg:col-span-4">
+        <div class="card p-3 lg:sticky lg:top-3">
+          <div class="flex items-center justify-between mb-3">
+            <div class="panel-title">Pipeline Timeline</div>
+            <div class="text-[11px] text-slate-500">Total: <span class="text-slate-700 font-semibold">{{ trace_duration_label }}</span></div>
+          </div>
+          <div class="relative pl-1">
+            <div class="tl-line"></div>
+            {% for step in timeline_steps %}
+            {% set rounds = step.rounds if step.rounds is defined else [] %}
+            <div class="timeline-node{% if rounds %} has-rounds is-expanded{% endif %}">
+              <button type="button" class="timeline-step flex items-center gap-2.5 py-2 relative{% if step.active %} is-active{% endif %}" data-step="{{ step.key }}" data-drawer-key="{{ step.drawer_key }}" aria-label="Open {{ step.label }} details">
+                <span class="tl-dot {{ 'active' if step.active else 'done' }} relative z-10">{% if step.active %}<span class="tl-pin"></span>{% else %}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>{% endif %}</span>
+                <span class="tl-label flex-1 text-[12.5px]">{{ step.label }}</span>
+                {% if rounds %}<span class="timeline-chevron" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>{% endif %}
+                <span class="tl-time text-[11.5px] text-slate-500 mono">{{ step.duration }}</span>
+              </button>
+              {% if rounds %}
+              <button class="chat-timeline-rounds-summary timeline-round-toggle" type="button">{{ rounds|length }} кругов готово</button>
+              <div class="chat-timeline-rounds">
+                {% for round in rounds %}
+                <button class="chat-timeline-round is-{{ round.status }}" type="button" data-detail="round-{{ step.key }}-{{ round.number }}">
+                  <span class="chat-timeline-round__marker">{% if round.status == "completed" %}<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>{% else %}<span class="chat-timeline-round__spinner"></span>{% endif %}</span>
+                  <span class="chat-timeline-round__body">
+                    <span class="chat-timeline-round__title">Круг {{ round.number }}</span>
+                    <span class="chat-timeline-round__status">{{ "готово" if round.status == "completed" else "выполняется" }}</span>
+                    {% if round.subtitle %}<span class="chat-timeline-round__subtitle">{{ round.subtitle }}</span>{% endif %}
+                  </span>
+                  <span class="chat-timeline-round__duration">{{ round.duration }}</span>
+                </button>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+</div>
+
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<aside class="drawer-panel drawer-root" id="stepDrawer" data-level="0" aria-hidden="true" aria-labelledby="drawerTitle">
+  <div class="drawer-head">
+    <div>
+      <div class="drawer-title" id="drawerTitle">Pipeline step</div>
+      <div class="drawer-subtitle" id="drawerSubtitle">Step details</div>
+    </div>
+    <button class="drawer-close" id="drawerClose" type="button" aria-label="Close step drawer">x</button>
+  </div>
+  <div class="drawer-tabs" id="drawerTabs"></div>
+  <div class="drawer-body scrollbar-thin" id="drawerBody"></div>
+</aside>
+<aside class="drawer-panel drawer-sub" id="detailDrawer" data-level="1" aria-hidden="true" aria-labelledby="detailTitle">
+  <div class="drawer-head">
+    <div>
+      <div class="drawer-title" id="detailTitle">Detail</div>
+      <div class="drawer-subtitle" id="detailSubtitle">Selected item</div>
+    </div>
+    <button class="drawer-close" id="detailClose" type="button" aria-label="Close detail drawer">x</button>
+  </div>
+  <div class="drawer-body scrollbar-thin" id="detailBody"></div>
+</aside>
+
+{% set report_json_item = drawer_items.get("report-json") if drawer_items.get is defined else none %}
+<script type="application/json" id="report-json-data">{{ (report_json_item.value if report_json_item else report) | tojson }}</script>
+<script type="application/json" id="report-drawer-data">{{ drawer_items | tojson }}</script>
+<script type="module">
+{% include "test_report.js" %}
+</script>
+{% endblock %}

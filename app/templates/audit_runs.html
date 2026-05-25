@@ -1,0 +1,80 @@
+{% extends "_shell.html" %}
+{% block title %}Benchmark Runs · SQL Security Studio{% endblock %}
+{% block extra_head %}
+<meta name="api-token" content="{{ api_token }}">
+<meta name="api-base-url" content="{{ api_base_url }}">
+<link rel="stylesheet" href="/web/assets/web_chat.css">
+<link rel="stylesheet" href="/web/audits/static/audit_run_compare.css">
+{% endblock %}
+{% block content %}
+<section class="view chat-view audits-view">
+  <div class="card chat-header">
+    <div class="chat-header__main">
+      <h1 class="chat-header__title">Benchmark Runs</h1>
+      <span class="pill pill-blue">Batch Testing</span>
+    </div>
+    <div class="chat-header__buttons">
+      <button class="btn btn-primary" id="newBatch" type="button">+ New batch</button>
+      <button class="btn" id="compareSelected" type="button">Compare</button>
+      <button class="btn" id="refreshRuns" type="button">Refresh</button>
+    </div>
+  </div>
+  <section class="card audit-lite">
+    <div class="audit-lite__toolbar">
+      <span id="runCount">0 runs</span>
+    </div>
+    <table class="audit-table" id="runsTable">
+      <colgroup>
+        <col class="runs-col-check">
+        <col class="runs-col-run">
+        <col class="runs-col-dataset">
+        <col class="runs-col-models">
+        <col class="runs-col-status">
+        <col class="runs-col-isolation">
+        <col class="runs-col-progress">
+      </colgroup>
+      <thead><tr><th></th><th>run</th><th>dataset</th><th>models</th><th>status</th><th>isolation</th><th>progress</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+  <div class="modal-backdrop" id="newBatchModal" hidden>
+    <form class="modal-panel" id="newBatchForm">
+      <h2>New batch</h2>
+      <label>Dataset <select id="batchDataset"></select></label>
+      <div class="dataset-upload">
+        <input id="batchDatasetFile" type="file" accept=".json,.jsonl,application/json">
+        <button class="btn" id="uploadBatchDataset" type="button">Upload dataset</button>
+        <button class="btn" id="downloadDatasetExample" type="button">Example JSONL</button>
+      </div>
+      <div class="field-hint" id="batchDatasetHint">Choose a dataset file for this run.</div>
+      <label>Models <select id="batchModels" multiple size="7"></select></label>
+      <label>Limit <input id="batchLimit" type="number" min="0" value="20"></label>
+      <div class="field-hint">0 means full dataset. For golden_v1_0 this runs every case in the file.</div>
+      <div class="provider-panel" id="openrouterProviderPanel" hidden></div>
+      <label>Isolation <select id="batchIsolation"><option value="clean">clean</option><option value="production">production</option><option value="snapshot">snapshot</option></select></label>
+      <label><span><input id="batchPromptCheckEnabled" type="checkbox" checked> Поиск инъекций</span></label>
+      <label>Prompt-check preset <select id="batchPromptCheckPreset"></select></label>
+      <div class="provider-panel" id="promptCheckOpenrouterProviderPanel" hidden></div>
+      <label>Smart-judge <select id="batchJudgePreset"></select></label>
+      <label>Chunk size <input id="batchJudgeChunk" type="number" min="1" value="10"></label>
+      <label>Workers <input id="batchJudgeWorkers" type="number" min="1" value="3"></label>
+      <label><span><input id="batchOracleEnabled" type="checkbox" checked> Run Oracle after pipeline</span></label>
+      <label>Oracle evaluator
+        <select id="batchOraclePreset">
+          <option value="deterministic" selected>Deterministic golden contract · no LLM/model</option>
+        </select>
+      </label>
+      <div class="field-hint">Oracle compares stored SQL/refusal with golden assertions. It does not spend Codex/OpenRouter tokens.</div>
+      <label><span><input id="batchAnalysisEnabled" type="checkbox" checked> Run Judge-audit after Oracle</span></label>
+      <label>Judge-audit <select id="batchAnalysisPreset"></select></label>
+      <label><span><input id="batchAnalysisOracleRequired" type="checkbox"> Analyze only cases with Oracle row</span></label>
+      <div class="modal-actions">
+        <button class="btn" id="cancelNewBatch" type="button">Cancel</button>
+        <button class="btn btn-primary" type="submit">Start</button>
+      </div>
+      <p class="form-status" id="newBatchStatus"></p>
+    </form>
+  </div>
+</section>
+<script src="/web/audits/static/audit_run_compare.js"></script>
+{% endblock %}

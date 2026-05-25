@@ -1,0 +1,167 @@
+{% extends "_shell.html" %}
+{% block title %}Benchmark Run · SQL Security Studio{% endblock %}
+{% block extra_head %}
+<meta name="api-token" content="{{ api_token }}">
+<meta name="api-base-url" content="{{ api_base_url }}">
+<meta name="benchmark-run-id" content="{{ benchmark_run_id }}">
+<link rel="stylesheet" href="/web/assets/web_chat.css">
+<link rel="stylesheet" href="/web/audits/static/audit_run_compare.css">
+<link rel="stylesheet" href="/web/audits/static/batch_cases.css">
+{% endblock %}
+{% block content %}
+<section class="view chat-view audits-view">
+  <div class="card chat-header">
+    <div class="chat-header__main">
+      <h1 class="chat-header__title mono" id="detailTitle">{{ benchmark_run_id }}</h1>
+      <span class="pill pill-blue" id="isolationChip">Loading</span>
+    </div>
+    <div class="chat-header__buttons">
+      <a class="btn btn-primary" id="openFullAuditReport" href="/audits/batch-cases?run_id={{ benchmark_run_id }}&report=run">Открыть полный отчёт аудита</a>
+      <button class="btn btn-primary" id="startJudge" type="button" hidden>Run smart-judge</button>
+      <button class="btn btn-primary" id="startOracle" type="button" hidden>Run Oracle</button>
+      <button class="btn btn-primary" id="startAnalysis" type="button">Run audit analysis</button>
+      <button class="btn" id="rerunFailed" type="button">Re-run failed cases</button>
+      <a class="btn" id="openCases" href="/audits/batch-cases?run_id={{ benchmark_run_id }}">Open cases</a>
+      <a class="btn" id="openOracleFailures" href="/audits/batch-cases?run_id={{ benchmark_run_id }}&oracle_verdict=fail">Oracle failures</a>
+      <a class="btn" id="exportCsv" href="/v1/benchmarks/runs/{{ benchmark_run_id }}/export.csv">Export CSV</a>
+    </div>
+  </div>
+  <section class="card audit-lite">
+    <div class="progress-row"><span>Pipeline</span><progress id="pipelineProgress" max="100" value="0"></progress><span id="pipelineText"></span></div>
+    <div class="progress-row"><span>Smart-judge</span><progress id="judgeProgress" max="100" value="0"></progress><span id="judgeText"></span></div>
+    <div class="progress-row"><span>Oracle</span><progress id="oracleProgress" max="100" value="0"></progress><span id="oracleText"></span></div>
+    <div class="progress-row"><span>Judge-audit</span><progress id="analysisProgress" max="100" value="0"></progress><span id="analysisText"></span></div>
+    <div class="run-error" id="pipelineError" hidden></div>
+    <div class="lineage-row" id="lineageRow"></div>
+  </section>
+  <section class="card audit-lite">
+    <div class="audit-lite__toolbar">
+      <h2>Background Calculations</h2>
+      <span class="case-muted" id="jobTimelineHint">Oracle, smart-judge and judge-audit jobs</span>
+    </div>
+    <div class="job-timeline" id="jobTimeline"></div>
+  </section>
+  <section class="card audit-lite">
+    <div class="audit-lite__toolbar">
+      <h2>Models Used</h2>
+      <a class="btn" id="openAnalyzedCases" href="/audits/batch-cases?run_id={{ benchmark_run_id }}">Analyzed cases</a>
+    </div>
+    <div id="modelSummaryText" class="case-muted">Loading model summary...</div>
+    <table class="audit-table" id="modelSummaryTable">
+      <thead><tr><th>preset</th><th>generator</th><th>evaluation / auditor</th><th>cases</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+  <section class="kpi-grid" id="kpiGrid"></section>
+  <section class="card audit-lite">
+    <h2>Per-stage Breakdown</h2>
+    <table class="audit-table" id="stageTable"><thead><tr><th>stage</th><th>avg ms</th><th>p95 ms</th><th>avg tokens in</th><th>avg cost</th><th>fail rate</th></tr></thead><tbody></tbody></table>
+    <div class="chart-row">
+      <div id="iterationsChart"></div>
+      <div class="smart-judge-panel">
+        <div class="chart-title"><span class="metric-icon metric-icon-blue" aria-hidden="true"></span><strong>Smart-judge</strong></div>
+        <div id="radarChart" class="smart-judge-radar"></div>
+      </div>
+    </div>
+  </section>
+  <section class="card audit-lite">
+    <h2>Insights</h2>
+    <div class="insights-grid">
+      <div class="insight-card"><h3>Top Problems</h3><div id="topProblems"></div></div>
+      <div class="insight-card"><h3>Failure Taxonomy</h3><div id="taxonomyChart"></div><div id="taxonomyList"></div></div>
+      <div class="insight-card"><h3>RAG Gaps</h3><div id="ragGaps"></div></div>
+      <div class="insight-card"><h3>Stage Hotspots</h3><div id="hotspotsChart"></div><div id="hotspotsList"></div></div>
+    </div>
+  </section>
+  <section class="card audit-lite">
+    <div class="audit-lite__toolbar">
+      <h2>Improvement Hypotheses</h2>
+      <button class="btn" id="refreshHypotheses" type="button">Refresh hypotheses</button>
+    </div>
+    <div id="hypothesisSummary" class="case-muted">Audit analysis has not been loaded yet.</div>
+    <table class="audit-table" id="hypothesisTable">
+      <thead><tr><th>severity</th><th>target</th><th>hypothesis</th><th>evidence</th><th>status</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+  <div class="modal-backdrop" id="rerunModal" hidden>
+    <form class="modal-panel" id="rerunForm">
+      <h2>Re-run failed cases</h2>
+      <label>Cases <textarea id="rerunCases" rows="5" readonly></textarea></label>
+      <label>Prompt version override <select id="promptVersionOverride"><option value="">No override</option></select></label>
+      <label><span><input id="rerunPromptCheckEnabled" type="checkbox" checked> Поиск инъекций</span></label>
+      <label>Prompt-check preset <select id="rerunPromptCheckPreset"></select></label>
+      <label>Smart-judge backend <input id="rerunJudgeBackend" value="codex_cli"></label>
+      <label>Smart-judge model <input id="rerunJudgeModel" value="gpt-5-5"></label>
+      <div class="modal-actions">
+        <button class="btn" id="cancelRerun" type="button">Cancel</button>
+        <button class="btn btn-primary" type="submit">Start child batch</button>
+      </div>
+      <p class="form-status" id="rerunStatus"></p>
+    </form>
+  </div>
+  <div class="modal-backdrop" id="judgeModal" hidden>
+    <form class="modal-panel" id="judgeForm">
+      <h2>Smart-judge</h2>
+      <label>Backend <input id="judgeBackend" value="codex_cli"></label>
+      <label>Model <input id="judgeModel" value="gpt-5.5"></label>
+      <label>Codex reasoning <select id="judgeCodexReasoning"><option value="">default</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option></select></label>
+      <label>Workers <input id="judgeWorkers" type="number" min="1" max="5" value="1"></label>
+      <label>Limit <input id="judgeLimit" type="number" min="0" value="0"></label>
+      <label><span><input id="judgeMissingOnly" type="checkbox" checked> Missing only</span></label>
+      <div class="modal-actions">
+        <button class="btn" id="cancelJudge" type="button">Cancel</button>
+        <button class="btn btn-primary" type="submit">Start</button>
+      </div>
+      <p class="form-status" id="judgeStatus"></p>
+    </form>
+  </div>
+  <div class="modal-backdrop" id="oracleModal" hidden>
+    <form class="modal-panel" id="oracleForm">
+      <h2>Oracle</h2>
+      <label>Oracle types <input id="oracleTypes" placeholder="empty = dataset default"></label>
+      <label>Limit <input id="oracleLimit" type="number" min="0" value="0"></label>
+      <label>Dataset version <input id="oracleDatasetVersion" value="1.1"></label>
+      <label><span><input id="oracleMissingOnly" type="checkbox" checked> Missing only</span></label>
+      <div class="modal-actions">
+        <button class="btn" id="cancelOracle" type="button">Cancel</button>
+        <button class="btn btn-primary" type="submit">Start</button>
+      </div>
+      <p class="form-status" id="oracleStatus"></p>
+    </form>
+  </div>
+  <div class="modal-backdrop" id="analysisModal" hidden>
+    <form class="modal-panel" id="analysisForm">
+      <h2>Judge-audit analysis</h2>
+      <label>Backend <input id="analysisBackend" value="codex_cli"></label>
+      <label>Model <input id="analysisModel" value="gpt-5.5"></label>
+      <label>Codex reasoning <select id="analysisCodexReasoning"><option value="">default</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option></select></label>
+      <label>Limit <input id="analysisLimit" type="number" min="0" value="0"></label>
+      <label><span><input id="analysisMissingOnly" type="checkbox" checked> Missing only</span></label>
+      <label><span><input id="analysisOracleRequired" type="checkbox"> Require Oracle row</span></label>
+      <div class="modal-actions">
+        <button class="btn" id="cancelAnalysis" type="button">Cancel</button>
+        <button class="btn btn-primary" type="submit">Start</button>
+      </div>
+      <p class="form-status" id="analysisStatus"></p>
+    </form>
+  </div>
+  <div class="metric-drawer-backdrop" id="metricDrawerBackdrop" hidden></div>
+  <aside class="metric-drawer" id="metricDrawer" aria-hidden="true">
+    <div class="metric-drawer__head">
+      <div>
+        <span class="metric-drawer__eyebrow">Metric details</span>
+        <h2 id="metricDrawerTitle">Metric</h2>
+      </div>
+      <button class="metric-drawer__close" id="metricDrawerClose" type="button" aria-label="Close">x</button>
+    </div>
+    <p class="metric-drawer__summary" id="metricDrawerSummary"></p>
+    <div class="metric-formula" id="metricDrawerFormula"></div>
+    <div class="metric-drawer__stats" id="metricDrawerStats"></div>
+    <div id="metricDrawerChart" class="metric-drawer__chart"></div>
+  </aside>
+</section>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="/web/audits/static/run_detail_per_stage.js"></script>
+<script src="/web/audits/static/run_detail_insights.js"></script>
+{% endblock %}

@@ -6,6 +6,15 @@
 SQL, прогоняет deterministic guard, EXPLAIN-песочницу и LLM-аудитор, после
 чего либо одобряет запрос, либо переписывает его до безопасного варианта.
 
+## Документация по запуску
+
+Каноническая инструкция для новой машины лежит в [`docs/README.md`](docs/README.md):
+там описаны compose-сервисы, env-файлы, сборка, RAG init, local Ollama и
+smoke-проверки. Для локальных Qwen/Claude CLI/Codex CLI см. отдельно
+[`docs/local-llm-setup.md`](docs/local-llm-setup.md). Реальные ключи и auth
+директории не хранятся в репозитории: `.env`, `deploy/benchmark.env`,
+`~/.claude`, `~/.codex` и `~/.claude.json` остаются только на машине деплоя.
+
 ## Компоненты
 
 | Компонент | Папки и файлы | Ответственность |

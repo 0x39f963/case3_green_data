@@ -1,0 +1,35 @@
+{% extends "_shell.html" %}
+{% block title %}Compare Runs · SQL Security Studio{% endblock %}
+{% block extra_head %}
+<meta name="api-token" content="{{ api_token }}">
+<meta name="api-base-url" content="{{ api_base_url }}">
+<link rel="stylesheet" href="/web/assets/web_chat.css">
+<link rel="stylesheet" href="/web/audits/static/audit_run_compare.css">
+{% endblock %}
+{% block content %}
+<section class="view chat-view audits-view">
+  <div class="card chat-header">
+    <div class="chat-header__main">
+      <h1 class="chat-header__title">Compare Runs</h1>
+      <span class="pill pill-blue" id="compareCount">0 selected</span>
+    </div>
+    <div class="chat-header__buttons">
+      <button class="btn" id="exportCompare" type="button">Export comparison CSV</button>
+    </div>
+  </div>
+  <section class="card audit-lite" id="compareMeta"></section>
+  <section class="card audit-lite">
+    <h2>KPI Diff</h2>
+    <table class="audit-table" id="kpiDiffTable"><thead></thead><tbody></tbody></table>
+  </section>
+  <section class="card audit-lite">
+    <div class="audit-lite__toolbar">
+      <label><input type="checkbox" id="filterDecisionDiff"> decisions differ</label>
+      <label><input type="checkbox" id="filterEaDiff"> EA differs</label>
+      <label><input type="checkbox" id="filterJudgeDiff"> judge delta >= 2</label>
+    </div>
+    <table class="audit-table" id="caseDiffTable"><thead></thead><tbody></tbody></table>
+  </section>
+</section>
+<script src="/web/audits/static/audit_run_compare.js"></script>
+{% endblock %}

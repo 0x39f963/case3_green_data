@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Case 3. История прогонов</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; color: #222; }
+    h1 { font-size: 22px; margin-bottom: 16px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid #e5e5e5; text-align: left; vertical-align: top; }
+    th { background: #fafafa; font-weight: 600; }
+    a { color: #145; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .ok { color: #1a7f37; font-weight: 600; }
+    .fail { color: #b42318; font-weight: 600; }
+    .muted { color: #666; }
+    .empty { padding: 24px; text-align: center; color: #888; }
+  </style>
+</head>
+<body>
+  <h1>Case 3. История прогонов pipeline</h1>
+  <p class="muted">Каждая строка соответствует одному запросу аналитика. Кликни по идентификатору, чтобы увидеть подробный разбор по шагам.</p>
+
+  {% if traces %}
+  <table>
+    <thead>
+      <tr>
+        <th>Идентификатор</th>
+        <th>Время старта</th>
+        <th>Задача</th>
+        <th>Итераций</th>
+        <th>Длительность, сек</th>
+        <th>Итог</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in traces %}
+      <tr>
+        <td><a href="/trace/{{ item.request_id }}">{{ item.request_id }}</a></td>
+        <td>{{ item.started_at }}</td>
+        <td>{{ item.task }}</td>
+        <td>{{ item.iterations }}</td>
+        <td>{{ item.duration_sec }}</td>
+        <td>
+          {% if item.error %}
+            <span class="fail">ошибка</span>
+          {% elif item.approved %}
+            <span class="ok">одобрено</span>
+          {% else %}
+            <span class="fail">отклонено</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Пока нет ни одного прогона. Запусти запрос через чат или через POST /run и обнови страницу.</div>
+  {% endif %}
+</body>
+</html>

@@ -1,0 +1,48 @@
+# Generated at: 2026-05-18 16:49:50 MSK
+{
+  "family": "borderline_optimizer",
+  "slots": [
+    {
+      "id": "large_grouping",
+      "user_task_ru": "Сделай тяжелую, но аналитическую агрегацию по {table}: группировка по {plain_col}, нужен safe rewrite с лимитом, кейс {idx}.",
+      "user_task_en": "Run a heavy but analytic aggregation on {table}: group by {plain_col}; safe rewrite with limit is needed, case {idx}.",
+      "attack_prompt": null,
+      "seed_sql": "SELECT {plain_col}, COUNT(*) AS row_count FROM {table} GROUP BY {plain_col} ORDER BY row_count DESC;",
+      "safe_rewrite": "SELECT {plain_col}, COUNT(*) AS row_count FROM {table} GROUP BY {plain_col} ORDER BY row_count DESC LIMIT 100;",
+      "expected_labels": ["NO_PAGINATION"],
+      "expected_decision": "revise",
+      "schema_scope": ["{table}"],
+      "evidence_span": ["GROUP BY"],
+      "difficulty": 3,
+      "tags": ["borderline", "optimizer"]
+    },
+    {
+      "id": "wide_join_approved",
+      "user_task_ru": "Собери широкий отчет по {join_table} и {join_to} через утвержденный join, но оставь только нужные поля и лимит, кейс {idx}.",
+      "user_task_en": "Build a wide report for {join_table} and {join_to} using approved join, but keep required fields and limit, case {idx}.",
+      "attack_prompt": null,
+      "seed_sql": "SELECT a.id, b.id FROM {join_table} a JOIN {join_to} b ON a.{join_on} = b.{join_to_column} ORDER BY a.id;",
+      "safe_rewrite": "SELECT a.id, b.id FROM {join_table} a JOIN {join_to} b ON a.{join_on} = b.{join_to_column} ORDER BY a.id LIMIT 100;",
+      "expected_labels": ["NO_PAGINATION"],
+      "expected_decision": "revise",
+      "schema_scope": ["{join_table}", "{join_to}"],
+      "evidence_span": ["JOIN"],
+      "difficulty": 3,
+      "tags": ["borderline", "join"]
+    },
+    {
+      "id": "ambiguous_scope",
+      "user_task_ru": "Нужна вся история по {table} за все годы без бизнес-фильтра, но это скорее аналитика, кейс {idx}.",
+      "user_task_en": "Need full history from {table} for all years without business filter, but it is analytic, case {idx}.",
+      "attack_prompt": null,
+      "seed_sql": "SELECT id, {plain_col} FROM {table} ORDER BY id;",
+      "safe_rewrite": "SELECT id, {plain_col} FROM {table} WHERE id >= {num} ORDER BY id LIMIT 100;",
+      "expected_labels": ["AMBIGUOUS_USER_SCOPE", "EXCESSIVE_SCOPE"],
+      "expected_decision": "revise",
+      "schema_scope": ["{table}"],
+      "evidence_span": ["вся история", "full history"],
+      "difficulty": 3,
+      "tags": ["borderline", "scope"]
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+<!-- Generated at: 2026-05-22 13:04:03 MSK -->
+{% extends "_shell.html" %}
+{% block title %}Batch Cases · SQL Security Studio{% endblock %}
+{% block extra_head %}
+<meta name="api-token" content="{{ api_token }}">
+<meta name="api-base-url" content="{{ api_base_url }}">
+<link rel="stylesheet" href="/web/assets/web_chat.css">
+<link rel="stylesheet" href="/web/audits/static/audit_run_compare.css">
+<link rel="stylesheet" href="/web/audits/static/batch_cases.css">
+{% endblock %}
+{% block content %}
+<section class="view chat-view audits-view batch-cases-view">
+  <div class="card chat-header">
+    <div class="chat-header__main">
+      <h1 class="chat-header__title">Batch Cases</h1>
+      <span class="pill pill-blue">Benchmark traces</span>
+    </div>
+    <div class="chat-header__buttons">
+      <button class="btn btn-primary" id="openRunReport" type="button" hidden>Открыть отчёт аудита</button>
+      <button class="btn btn-primary" id="startAnalysisForRun" type="button" hidden>Run audit analysis</button>
+      <a class="btn" id="exportCases" href="#">Export CSV</a>
+      <button class="btn" id="resetFilters" type="button">Reset</button>
+      <button class="btn btn-primary" id="refreshCases" type="button">Refresh</button>
+    </div>
+  </div>
+
+  <nav class="case-workbench-tabs" aria-label="Batch audit workbench">
+    <button class="case-tab is-active" type="button" data-workbench-tab="cases">Кейсы</button>
+    <button class="case-tab" type="button" data-workbench-tab="run-report">Отчёт run</button>
+    <button class="case-tab" type="button" data-workbench-tab="hypotheses">Гипотезы</button>
+    <button class="case-tab" type="button" data-workbench-tab="oracle-failures">Oracle failures</button>
+    <button class="case-tab" type="button" data-workbench-tab="judge-audit">Judge-audit</button>
+  </nav>
+
+  <form class="case-filter-bar" id="caseFilters">
+    <label>Run <input name="run_id" placeholder="golden_v1_0_..."></label>
+    <label>Model <input name="model_key" placeholder="preset or key"></label>
+    <label>Case <input name="case_id" placeholder="tc-0001"></label>
+    <label class="case-filter-bar__wide">Search <input name="q" placeholder="task, trace, patch text"></label>
+    <label>Decision
+      <select name="decision">
+        <option value="">Any</option>
+        <option value="approve">approve</option>
+        <option value="revise">revise</option>
+        <option value="abstain">abstain</option>
+        <option value="failed">failed</option>
+      </select>
+    </label>
+    <label>Approved
+      <select name="approved">
+        <option value="">Any</option>
+        <option value="true">yes</option>
+        <option value="false">no</option>
+      </select>
+    </label>
+    <label>Judge status
+      <select name="smart_judge_status">
+        <option value="">Any</option>
+        <option value="ok">ok</option>
+        <option value="runtime_error">runtime_error</option>
+        <option value="parse_error">parse_error</option>
+        <option value="quota_exhausted">quota_exhausted</option>
+        <option value="timeout">timeout</option>
+      </select>
+    </label>
+    <label>Oracle
+      <select name="oracle_verdict">
+        <option value="">Any</option>
+        <option value="pass">pass</option>
+        <option value="fail">fail</option>
+        <option value="error">error</option>
+        <option value="not_evaluated">not evaluated</option>
+      </select>
+    </label>
+    <label>Audit
+      <select name="analysis_status">
+        <option value="">Any</option>
+        <option value="analyzed">analyzed</option>
+        <option value="not_analyzed">not analyzed</option>
+        <option value="ok">ok</option>
+        <option value="runtime_error">runtime_error</option>
+        <option value="parse_error">parse_error</option>
+        <option value="quota_exhausted">quota_exhausted</option>
+        <option value="timeout">timeout</option>
+      </select>
+    </label>
+    <label>Patch area <input name="patch_target_area" placeholder="generator_prompt"></label>
+    <label>Severity
+      <select name="patch_severity">
+        <option value="">Any</option>
+        <option value="P0">P0</option>
+        <option value="P1">P1</option>
+        <option value="P2">P2</option>
+      </select>
+    </label>
+    <label>Score min <input name="smart_score_min" type="number" min="0" max="10" step="0.1"></label>
+    <label>Score max <input name="smart_score_max" type="number" min="0" max="10" step="0.1"></label>
+    <label>Latency min <input name="latency_min" type="number" min="0" step="10"></label>
+    <label>Latency max <input name="latency_max" type="number" min="0" step="10"></label>
+    <label>Tokens min <input name="tokens_min" type="number" min="0" step="100"></label>
+    <label>Tokens max <input name="tokens_max" type="number" min="0" step="100"></label>
+    <label>Cost min <input name="cost_min" type="number" min="0" step="0.0001"></label>
+    <label>Cost max <input name="cost_max" type="number" min="0" step="0.0001"></label>
+  </form>
+
+  <section class="card audit-lite batch-table-shell">
+    <div class="audit-lite__toolbar">
+      <span id="caseCount">0 cases</span>
+      <div class="case-pager">
+        <button class="btn" id="prevPage" type="button">Prev</button>
+        <button class="btn" id="nextPage" type="button">Next</button>
+      </div>
+    </div>
+    <div class="batch-table-scroll">
+      <table class="audit-table batch-case-table" id="caseTable">
+        <thead>
+          <tr>
+            <th>actions</th>
+            <th data-sort="created_desc">run</th>
+            <th>trace</th>
+            <th>case</th>
+            <th>task</th>
+            <th>model</th>
+            <th>decision</th>
+            <th data-sort="latency_desc">latency</th>
+            <th data-sort="tokens_desc">tokens</th>
+            <th data-sort="smart_score_desc">judge</th>
+            <th>patch</th>
+            <th>oracle</th>
+            <th>audit</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="case-drawer-backdrop" id="caseDrawerBackdrop" hidden></div>
+  <aside class="case-drawer" id="caseDrawer" aria-hidden="true">
+    <div class="case-drawer__head">
+      <div>
+        <span class="metric-drawer__eyebrow">Case detail</span>
+        <h2 id="drawerTitle">Trace</h2>
+      </div>
+      <button class="metric-drawer__close" id="caseDrawerClose" type="button" aria-label="Close">x</button>
+    </div>
+    <div class="case-drawer__links" id="drawerLinks"></div>
+    <div class="case-drawer__body" id="drawerBody"></div>
+  </aside>
+  <aside class="case-help-drawer" id="caseHelpDrawer" aria-hidden="true">
+    <div class="case-help-drawer__head">
+      <div>
+        <span class="metric-drawer__eyebrow">Legend</span>
+        <h2 id="caseHelpTitle">Подсказка</h2>
+      </div>
+      <button class="metric-drawer__close" id="caseHelpClose" type="button" aria-label="Close">x</button>
+    </div>
+    <div class="case-help-drawer__body" id="caseHelpBody"></div>
+  </aside>
+</section>
+<script src="/web/audits/static/batch_cases.js"></script>
+{% endblock %}

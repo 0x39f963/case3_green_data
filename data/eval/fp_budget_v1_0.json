@@ -1,0 +1,16 @@
+{
+  "block_fp_rate": {
+    "gold_data_exposure": 0.0,
+    "gold_reliability_cost": 0.0,
+    "gold_safe_readonly": 0.0,
+    "hard_negatives": 0.0
+  },
+  "measured_at": "2026-05-18",
+  "target_v1": {
+    "gold_data_exposure": 0.1,
+    "gold_reliability_cost": 0.2,
+    "gold_safe_readonly": 0.05,
+    "hard_negatives": 0.1
+  },
+  "version": "v1.0"
+}

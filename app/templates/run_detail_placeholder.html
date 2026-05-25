@@ -1,0 +1,52 @@
+{% extends "_shell.html" %}
+
+{% block title %}Run {{ trace_id }} · SQL Security Studio{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/web/assets/web_chat.css">
+{% endblock %}
+
+{% block content %}
+<section class="view chat-view">
+  <div class="card chat-header">
+    <div class="chat-header__main">
+      <span class="chat-header__logo" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </span>
+      <h1 class="chat-header__title">Run report placeholder</h1>
+      <span class="pill pill-blue mono">{{ trace_id }}</span>
+    </div>
+    <div class="chat-header__side">
+      <div class="chat-header__buttons">
+        <a class="btn" href="/chat">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          Back to Chat
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <section class="card" style="padding: 16px; display: grid; gap: 12px; max-width: 880px;">
+    <div class="panel-title">
+      <span class="panel-num">!</span>
+      HTML report is not generated yet
+    </div>
+    <p class="text-muted" style="margin: 0; line-height: 1.55;">
+      {{ message or ("Run " ~ trace_id ~ " has a saved JSON trace, but no HTML report in data/bot/reports.") }}
+    </p>
+    <div class="banner banner-warn">
+      Detail report becomes available once the bot finishes rendering the run.
+      Re-run the request or open the raw JSON trace below.
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+      {% if trace_json_url %}
+      <a class="btn btn-primary" href="{{ trace_json_url }}" target="_blank" rel="noreferrer">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        Open raw JSON trace
+      </a>
+      {% endif %}
+      <a class="btn" href="/chat">Back to Chat</a>
+    </div>
+  </section>
+</section>
+{% endblock %}

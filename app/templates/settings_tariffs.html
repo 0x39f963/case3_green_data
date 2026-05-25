@@ -1,0 +1,25 @@
+{% extends "_shell.html" %}
+{% block title %}Tariffs · SQL Security Studio{% endblock %}
+{% block extra_head %}
+<meta name="api-token" content="{{ api_token }}">
+<meta name="api-base-url" content="{{ api_base_url }}">
+<link rel="stylesheet" href="/web/assets/web_chat.css">
+<link rel="stylesheet" href="/web/audits/static/audit_run_compare.css">
+{% endblock %}
+{% block content %}
+<section class="view chat-view audits-view">
+  <div class="card chat-header">
+    <div class="chat-header__main">
+      <h1 class="chat-header__title">Model Tariffs</h1>
+      <span class="pill pill-blue">Read-only</span>
+    </div>
+  </div>
+  <section class="card audit-lite">
+    <table class="audit-table" id="tariffsTable">
+      <thead><tr><th>preset</th><th>backend</th><th>model</th><th>in / 1k</th><th>out / 1k</th><th>quota-eq</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+</section>
+<script src="/web/audits/static/settings_tariffs.js"></script>
+{% endblock %}

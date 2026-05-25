@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Прогон {{ trace.request_id }}</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; color: #222; max-width: 1100px; }
+    h1 { font-size: 22px; margin-bottom: 8px; }
+    h2 { font-size: 18px; margin-top: 28px; }
+    h3 { font-size: 15px; margin: 12px 0 6px; color: #333; }
+    .meta { color: #555; font-size: 13px; margin-bottom: 24px; }
+    .card { border: 1px solid #d0d7de; border-radius: 6px; margin: 10px 0; background: #fff; }
+    .card summary { padding: 10px 14px; cursor: pointer; font-weight: 600; background: #f6f8fa; border-radius: 6px 6px 0 0; }
+    .card[open] summary { border-bottom: 1px solid #d0d7de; }
+    .card .body { padding: 12px 14px; }
+    pre { background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; font-size: 12px; line-height: 1.45; }
+    mark { background: #fff1a8; padding: 1px 2px; border-radius: 2px; }
+    .kv { display: grid; grid-template-columns: 200px 1fr; gap: 4px 16px; margin-bottom: 8px; }
+    .kv .k { color: #555; }
+    .kv .v { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+    .ok { color: #1a7f37; font-weight: 600; }
+    .fail { color: #b42318; font-weight: 600; }
+    a { color: #145; }
+    .back { display: inline-block; margin-bottom: 14px; }
+    .tabs { margin: 18px 0 24px; }
+    .tabs input { display: none; }
+    .tabs label { display: inline-block; padding: 8px 12px; border: 1px solid #d0d7de; background: #f6f8fa; cursor: pointer; border-radius: 4px 4px 0 0; margin-right: 2px; font-size: 13px; }
+    .tab-panel { display: none; border: 1px solid #d0d7de; padding: 12px; border-radius: 0 4px 4px 4px; }
+    #tab-evidence:checked ~ .panel-evidence,
+    #tab-ast:checked ~ .panel-ast,
+    #tab-explain:checked ~ .panel-explain,
+    #tab-diff:checked ~ .panel-diff { display: block; }
+    #tab-evidence:checked ~ label[for="tab-evidence"],
+    #tab-ast:checked ~ label[for="tab-ast"],
+    #tab-explain:checked ~ label[for="tab-explain"],
+    #tab-diff:checked ~ label[for="tab-diff"] { background: #fff; border-bottom-color: #fff; }
+  </style>
+</head>
+<body>
+  <a class="back" href="/">К списку прогонов</a>
+  <h1>Прогон {{ trace.request_id }}</h1>
+  <div class="meta">
+    Старт: {{ trace.started_at }} | Финиш: {{ trace.finished_at }} | Длительность: {{ trace.duration_sec }} c
+  </div>
+
+  <h2>Задача</h2>
+  <pre>{{ trace.task }}</pre>
+
+  {% if trace.error %}
+  <h2>Ошибка</h2>
+  <pre class="fail">{{ trace.error.type }}: {{ trace.error.message }}</pre>
+  {% endif %}
+
+  {% if trace.result %}
+  {% set meta = trace.result.metadata or {} %}
+  <h2>Финальный результат</h2>
+  <div class="kv">
+    <div class="k">Вердикт</div>
+    <div class="v">
+      {% if trace.result.approved %}<span class="ok">одобрено</span>{% else %}<span class="fail">отклонено</span>{% endif %}
+    </div>
+    <div class="k">Итераций</div><div class="v">{{ trace.result.iterations_used }}</div>
+    <div class="k">Итоговый риск</div><div class="v">{{ trace.result.overall_risk_score }}</div>
+    <div class="k">Режим LLM</div>
+    <div class="v">{{ meta.mode }} | {{ meta.generator_model }} | {{ meta.auditor_model }}</div>
+  </div>
+  <h3>Финальный SQL</h3>
+  <pre>{{ trace.result.final_sql }}</pre>
+  <h3>Отчет для аналитика</h3>
+  <pre>{{ trace.result.audit_log }}</pre>
+  {% endif %}
+
+  <h2>Trace tabs</h2>
+  <div class="tabs">
+    <input type="radio" id="tab-evidence" name="trace-tabs" checked>
+    <input type="radio" id="tab-ast" name="trace-tabs">
+    <input type="radio" id="tab-explain" name="trace-tabs">
+    <input type="radio" id="tab-diff" name="trace-tabs">
+    <label for="tab-evidence">Evidence</label>
+    <label for="tab-ast">AST</label>
+    <label for="tab-explain">EXPLAIN</label>
+    <label for="tab-diff">Diff</label>
+
+    <div class="tab-panel panel-evidence">
+      {% for event in trace.events %}
+        {% if event.details.evidence %}
+          <h3>{{ event.node }}</h3>
+          {% for item in event.details.evidence %}
+            <div class="kv">
+              <div class="k">Label</div><div class="v">{{ item.label }}</div>
+              <div class="k">Layer</div><div class="v">{{ item.layer }}</div>
+              <div class="k">Evidence</div><div class="v">{{ item.evidence_span }}</div>
+            </div>
+            {% if trace.result and trace.result.final_sql %}
+              {{ trace.result.final_sql | highlight_span(item.evidence_span) }}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      {% else %}
+        <pre>Нет evidence events.</pre>
+      {% endfor %}
+    </div>
+
+    <div class="tab-panel panel-ast">
+      {% for event in trace.events %}
+        {% if event.details.ast_tree %}
+          <h3>{{ event.node }}</h3>
+          <pre>{{ event.details.ast_tree | tojson(indent=2) }}</pre>
+        {% endif %}
+      {% else %}
+        <pre>Нет AST events.</pre>
+      {% endfor %}
+    </div>
+
+    <div class="tab-panel panel-explain">
+      {% for event in trace.events %}
+        {% if event.node == "explain_sandbox" %}
+          <h3>{{ event.node }}</h3>
+          {% if event.details.plan %}
+            <pre>{{ event.details.plan }}</pre>
+          {% else %}
+            <pre>{{ event.details.error or "EXPLAIN skipped or empty." }}</pre>
+          {% endif %}
+        {% endif %}
+      {% else %}
+        <pre>Нет EXPLAIN events.</pre>
+      {% endfor %}
+    </div>
+
+    <div class="tab-panel panel-diff">
+      {% for event in trace.events %}
+        {% if event.details.diff %}
+          <h3>{{ event.node }}</h3>
+          <pre>{{ event.details.diff }}</pre>
+        {% endif %}
+      {% else %}
+        <pre>Нет diff events.</pre>
+      {% endfor %}
+    </div>
+  </div>
+
+  <h2>Шаги pipeline ({{ trace.events|length }})</h2>
+  {% for event in trace.events %}
+  <details class="card" {% if loop.last %}open{% endif %}>
+    <summary>
+      [{{ loop.index }}] {{ event.node }} - {{ event.duration_sec }} c
+    </summary>
+    <div class="body">
+      <div class="kv">
+        <div class="k">Старт</div><div class="v">{{ event.started_at }}</div>
+        <div class="k">Финиш</div><div class="v">{{ event.finished_at }}</div>
+      </div>
+
+      {% if event.inputs %}
+      <h3>Вход</h3>
+      <pre>{{ event.inputs | tojson(indent=2) }}</pre>
+      {% endif %}
+
+      {% if event.outputs %}
+      <h3>Выход</h3>
+      <pre>{{ event.outputs | tojson(indent=2) }}</pre>
+      {% endif %}
+
+      {% if event.details %}
+      <h3>Детали</h3>
+      {% if event.details.prompt_system %}
+        <h3>Системный промпт</h3>
+        <pre>{{ event.details.prompt_system }}</pre>
+      {% endif %}
+      {% if event.details.prompt_user %}
+        <h3>Пользовательский промпт</h3>
+        <pre>{{ event.details.prompt_user }}</pre>
+      {% endif %}
+      {% if event.details.generation_context %}
+        <h3>Контекст из памяти (генерация)</h3>
+        <pre>{{ event.details.generation_context }}</pre>
+      {% endif %}
+      {% if event.details.security_context %}
+        <h3>Контекст из памяти (безопасность)</h3>
+        <pre>{{ event.details.security_context }}</pre>
+      {% endif %}
+      {% if event.details.sensitive_fields_text %}
+        <h3>Чувствительные поля</h3>
+        <pre>{{ event.details.sensitive_fields_text }}</pre>
+      {% endif %}
+      {% if event.details.response_raw %}
+        <h3>Ответ модели (сырой)</h3>
+        <pre>{{ event.details.response_raw }}</pre>
+      {% endif %}
+      {% if event.details.response_sql %}
+        <h3>Извлеченный SQL</h3>
+        <pre>{{ event.details.response_sql }}</pre>
+      {% endif %}
+      {% if event.details.rule_findings %}
+        <h3>Найдено быстрыми правилами</h3>
+        <pre>{{ event.details.rule_findings | tojson(indent=2) }}</pre>
+      {% endif %}
+      {% if event.details.model_findings %}
+        <h3>Найдено языковой моделью</h3>
+        <pre>{{ event.details.model_findings | tojson(indent=2) }}</pre>
+      {% endif %}
+      {% if event.details.merged_findings %}
+        <h3>Итоговый список уязвимостей</h3>
+        <pre>{{ event.details.merged_findings | tojson(indent=2) }}</pre>
+      {% endif %}
+      {% if event.details.plan %}
+        <h3>EXPLAIN-план</h3>
+        <pre>{{ event.details.plan }}</pre>
+      {% endif %}
+      {% if event.details.error %}
+        <h3>Ошибка</h3>
+        <pre class="fail">{{ event.details.error }}</pre>
+      {% endif %}
+      {% if event.details.parse_error %}
+        <h3>Ошибка разбора JSON-ответа модели</h3>
+        <pre class="fail">{{ event.details.parse_error }}</pre>
+      {% endif %}
+      {% if event.details.summary %}
+        <h3>Сводка</h3>
+        <pre>{{ event.details.summary }}</pre>
+      {% endif %}
+      {% endif %}
+    </div>
+  </details>
+  {% endfor %}
+</body>
+</html>
