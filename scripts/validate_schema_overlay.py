@@ -104,6 +104,12 @@ def _check_v2_table_quality(name: str, item: dict) -> list[str]:
     failures: list[str] = []
     pii_tags = item.get("pii_tags") or {}
     pii_keys = set(pii_tags.keys()) if isinstance(pii_tags, dict) else set()
+    for col_name in pii_keys:
+        cols = item.get("columns") or {}
+        if col_name not in cols:
+            failures.append(
+                name + ": pii_tags references non-existent column " + repr(col_name)
+            )
     columns = item.get("columns")
     if not isinstance(columns, dict):
         return failures
@@ -116,7 +122,10 @@ def _check_v2_table_quality(name: str, item: dict) -> list[str]:
                 name + "." + cname + ': category="pii" but column is not listed in table.pii_tags'
             )
         description = (cinfo.get("description") or "").strip()
-        if description and len(description) < MIN_DESCRIPTION_LENGTH:
+        if not description:
+            failures.append(name + "." + cname + ": empty description")
+            continue
+        if len(description) < MIN_DESCRIPTION_LENGTH:
             failures.append(
                 name + "." + cname + ": description shorter than " + str(MIN_DESCRIPTION_LENGTH)
                 + " chars: " + repr(description)
@@ -124,6 +133,11 @@ def _check_v2_table_quality(name: str, item: dict) -> list[str]:
         if description in GENERIC_DESCRIPTION_WATCHLIST:
             failures.append(
                 name + "." + cname + ": description is a single generic word from watchlist: "
+                + repr(description)
+            )
+        if description.lower().strip(" .:_-") == cname.lower():
+            failures.append(
+                name + "." + cname + ": description is just the column name verbatim: "
                 + repr(description)
             )
     return failures

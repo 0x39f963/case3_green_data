@@ -52,6 +52,14 @@ NO_ORACLE_CASES: list[tuple[str, str, set[str]]] = [
      "SELECT string_agg(email, ',') AS e FROM sys_employee", {"DIRECT_SENSITIVE"}),
     ("array_agg(email) — массив-агрегация не маскирует PII",
      "SELECT array_agg(email) AS e FROM sys_employee", {"DIRECT_SENSITIVE"}),
+    ("json_agg(email) — JSON-агрегация не маскирует, значение видно в выводе",
+     "SELECT json_agg(email) AS e FROM sys_employee", {"DIRECT_SENSITIVE"}),
+    ("jsonb_agg(email) — JSONB-агрегация так же не маскирует",
+     "SELECT jsonb_agg(email) AS e FROM sys_employee", {"DIRECT_SENSITIVE"}),
+    ("md5(string_agg(email,',')) — маска обёрнута вокруг агрегации → OK",
+     "SELECT md5(string_agg(email, ',')) AS e FROM sys_employee", set()),
+    ("bool_and(email IS NOT NULL) — консервативно DIRECT_SENSITIVE (документирует текущую границу)",
+     "SELECT bool_and(email IS NOT NULL) AS has_email FROM sys_employee", {"DIRECT_SENSITIVE"}),
 ]
 
 NO_ORACLE_CASE_IDS = [
@@ -71,6 +79,10 @@ NO_ORACLE_CASE_IDS = [
     "SAFE_REWRITE_PII_REPLACE_OK",
     "SAFE_REWRITE_PII_STRING_AGG_RAW",
     "SAFE_REWRITE_PII_ARRAY_AGG_RAW",
+    "SAFE_REWRITE_PII_JSON_AGG_RAW",
+    "SAFE_REWRITE_PII_JSONB_AGG_RAW",
+    "SAFE_REWRITE_PII_MD5_AROUND_STRING_AGG_OK",
+    "SAFE_REWRITE_PII_BOOL_AND_NULL_CHECK_CONSERVATIVE",
 ]
 
 

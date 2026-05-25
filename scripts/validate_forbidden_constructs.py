@@ -21,6 +21,7 @@ except Exception:  # pragma: no cover - pglast is optional
 
 DEFAULT_PATH = Path("data/sql_guard/forbidden_constructs.yaml")
 ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+URL_RE = re.compile(r"^https?://[^\s]+$")
 
 REQUIRED_FIELDS = {
     "id",
@@ -180,6 +181,16 @@ def check_rule(rule: dict[str, Any], seen: set[str], index: int) -> list[str]:
                     errors.append(
                         f"{rule_id}: {field}[{offset}] is not parseable SQL: {parse_error}"
                     )
+
+    references = rule.get("reference")
+    if isinstance(references, list):
+        for offset, ref in enumerate(references):
+            if not isinstance(ref, str) or not ref.strip():
+                continue
+            if not URL_RE.match(ref.strip()):
+                errors.append(
+                    f"{rule_id}: reference[{offset}] is not an http(s) URL: {ref!r}"
+                )
 
     ast_check = rule.get("ast_check")
     if ast_check in {"func_call_with_arg", "func_call_numeric_arg_gt"} and not is_non_empty_text(
