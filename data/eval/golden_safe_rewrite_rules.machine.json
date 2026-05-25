@@ -103,11 +103,11 @@
       "severity": "warning",
       "machine_checkable": "partial",
       "check_type": "limit_literal_int_allowed_step",
-      "used_by": ["future_safe_rewrite_validator"],
-      "current_modules": [],
-      "finding_labels": [],
-      "requires_context": ["task_intent"],
-      "notes": "Allowed list-like LIMIT values are 10, 20, 50, 100, 500; aggregate single-row queries may use LIMIT 1 or omit LIMIT."
+      "used_by": ["app/ast_oracle_check.py", "future_safe_rewrite_validator"],
+      "current_modules": ["app/ast_oracle_check.py"],
+      "finding_labels": ["ORACLE_LIMIT_UNCHECKED"],
+      "requires_context": ["oracle_sql", "task_intent"],
+      "notes": "Current oracle comparison emits ORACLE_LIMIT_UNCHECKED for non-literal candidate LIMIT when oracle has a LIMIT. Allowed list-like LIMIT values are still future validator logic: 10, 20, 50, 100, 500; aggregate single-row queries may use LIMIT 1 or omit LIMIT."
     },
     {
       "rule_id": "SAFE_REWRITE_WHERE_REQUIRED",
@@ -123,13 +123,13 @@
     {
       "rule_id": "SAFE_REWRITE_WHERE_SEMANTIC_MATCH",
       "severity": "blocker",
-      "machine_checkable": "human",
-      "check_type": "task_semantic_review",
-      "used_by": ["reviewer", "future_semantic_validator"],
-      "current_modules": [],
-      "finding_labels": [],
-      "requires_context": ["task", "business_meaning"],
-      "notes": "No current ORACLE_WHERE_MISMATCH finding exists; status=0 vs status=1 needs semantic review."
+      "machine_checkable": "partial",
+      "check_type": "oracle_where_key_compare_plus_review",
+      "used_by": ["app/ast_oracle_check.py", "reviewer", "future_semantic_validator"],
+      "current_modules": ["app/ast_oracle_check.py"],
+      "finding_labels": ["ORACLE_WHERE_MISMATCH"],
+      "requires_context": ["oracle_sql", "task", "business_meaning"],
+      "notes": "Current oracle comparison detects changed WHERE structure/literals against oracle. Full task meaning still needs review when the oracle itself is ambiguous."
     },
     {
       "rule_id": "SAFE_REWRITE_GROUP_BY_REQUIRED",
@@ -244,8 +244,9 @@
       "bad_reason": "safe_rewrite should use a stable integer LIMIT so oracle comparison has a fixed width.",
       "expected_check": {
         "machine_checkable": "partial",
-        "current_module": null,
-        "future_check_type": "limit_literal_int"
+        "current_module": "app/ast_oracle_check.py",
+        "finding_labels": ["ORACLE_LIMIT_UNCHECKED"],
+        "future_check_type": "limit_allowed_step"
       }
     },
     {
@@ -285,10 +286,11 @@
       "good_safe_rewrite": "SELECT id, name__ru, status\nFROM corp_tech_application\nWHERE status = 1\nLIMIT 100;",
       "bad_reason": "WHERE exists but changes the task meaning from active to inactive records.",
       "expected_check": {
-        "machine_checkable": "human",
-        "current_module": null,
-        "future_check_type": "where_semantic_match",
-        "note": "No current ORACLE_WHERE_MISMATCH finding exists."
+        "machine_checkable": "partial",
+        "current_module": "app/ast_oracle_check.py",
+        "finding_labels": ["ORACLE_WHERE_MISMATCH"],
+        "future_check_type": "task_semantic_review",
+        "note": "AST catches literal mismatch against oracle; full business meaning still needs review when oracle is not trusted."
       }
     },
     {
@@ -352,13 +354,13 @@
   "current_module_gaps": [
     {
       "gap": "where_semantic_mismatch",
-      "current_state": "app/ast_oracle_check.py has ORACLE_WHERE_MISSING but no ORACLE_WHERE_MISMATCH.",
-      "deferred_reason": "Requires task/business meaning, not only AST shape."
+      "current_state": "app/ast_oracle_check.py emits ORACLE_WHERE_MISMATCH for changed WHERE structure/literals against oracle.",
+      "deferred_reason": "Full business meaning still requires task context; AST comparison only checks candidate vs oracle."
     },
     {
       "gap": "safe_rewrite_limit_literal_and_allowed_step",
-      "current_state": "app/ast_oracle_check.py extracts integer LIMIT for comparison but does not reject LIMIT $1 or LIMIT 17 in safe_rewrite.",
-      "deferred_reason": "This is a future safe_rewrite validator rule, not runtime integration."
+      "current_state": "app/ast_oracle_check.py emits ORACLE_LIMIT_UNCHECKED for non-literal candidate LIMIT when oracle has a LIMIT. It does not reject allowed-step issues like LIMIT 17.",
+      "deferred_reason": "Allowed LIMIT step policy belongs to a future safe_rewrite validator, not runtime integration."
     },
     {
       "gap": "schema_scope_subset_validation",

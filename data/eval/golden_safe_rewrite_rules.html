@@ -492,7 +492,7 @@ WHERE status = 1
 ORDER BY create_date DESC
 LIMIT 100;</code></pre></td>
         <td>В эталоне нужен стабильный числовой <code>LIMIT</code>, иначе oracle не знает ширину списка.</td>
-        <td>future validator: <code>limit_literal_int</code>; текущий oracle-модуль только извлекает integer limit</td>
+        <td><code>app/ast_oracle_check.py</code>: <code>ORACLE_LIMIT_UNCHECKED</code>; future validator: allowed LIMIT step</td>
       </tr>
       <tr>
         <td><code>LIMIT_MAGIC_VALUE</code></td>
@@ -536,7 +536,7 @@ FROM corp_tech_application
 WHERE status = 1
 LIMIT 100;</code></pre></td>
         <td>Фильтр есть, но смысл задачи изменен: активные записи заменены неактивными.</td>
-        <td>human/partial: semantic review; текущий <code>app/ast_oracle_check.py</code> не имеет <code>ORACLE_WHERE_MISMATCH</code></td>
+        <td>partial: <code>app/ast_oracle_check.py</code> дает <code>ORACLE_WHERE_MISMATCH</code>; business meaning остается review</td>
       </tr>
       <tr>
         <td><code>WHERE_REQUIRED_MISSING</code></td>
@@ -646,9 +646,9 @@ LIMIT 100;</code></pre></td>
       <tr><td><code>SAFE_REWRITE_MASK_CLASS_MATCH</code></td><td><code>yes</code></td><td><code>ast_projection_mask_class</code></td><td><code>app/ast_pii_masking.py</code></td><td><code>MASKING_DOWNGRADED</code>, <code>MASKING_TYPE_MISMATCH</code></td></tr>
       <tr><td><code>SAFE_REWRITE_LIMIT_REQUIRED</code></td><td><code>partial</code></td><td><code>oracle_limit_presence</code></td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_LIMIT_MISSING</code></td></tr>
       <tr><td><code>SAFE_REWRITE_LIMIT_NOT_WIDER</code></td><td><code>yes</code></td><td><code>oracle_limit_value_compare</code></td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_LIMIT_TOO_WIDE</code></td></tr>
-      <tr><td><code>SAFE_REWRITE_LIMIT_LITERAL_STEP</code></td><td><code>partial</code></td><td><code>limit_literal_int_allowed_step</code></td><td>future safe_rewrite validator</td><td>validator error</td></tr>
+      <tr><td><code>SAFE_REWRITE_LIMIT_LITERAL_STEP</code></td><td><code>partial</code></td><td><code>limit_literal_int_allowed_step</code></td><td><code>app/ast_oracle_check.py</code> / future safe_rewrite validator</td><td><code>ORACLE_LIMIT_UNCHECKED</code> for non-literal LIMIT; allowed-step validator later</td></tr>
       <tr><td><code>SAFE_REWRITE_WHERE_REQUIRED</code></td><td><code>partial</code></td><td><code>oracle_where_presence</code></td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_WHERE_MISSING</code></td></tr>
-      <tr><td><code>SAFE_REWRITE_WHERE_SEMANTIC_MATCH</code></td><td><code>human</code></td><td><code>task_semantic_review</code></td><td>reviewer / future semantic validator</td><td>no current <code>ORACLE_WHERE_MISMATCH</code></td></tr>
+      <tr><td><code>SAFE_REWRITE_WHERE_SEMANTIC_MATCH</code></td><td><code>partial</code></td><td><code>oracle_where_key_compare_plus_review</code></td><td><code>app/ast_oracle_check.py</code> / reviewer</td><td><code>ORACLE_WHERE_MISMATCH</code> for candidate-vs-oracle literal/structure mismatch</td></tr>
       <tr><td><code>SAFE_REWRITE_GROUP_BY_REQUIRED</code></td><td><code>partial</code></td><td><code>oracle_group_presence</code></td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_GROUP_BY_MISSING</code></td></tr>
       <tr><td><code>SAFE_REWRITE_ORDER_BY_REQUIRED</code></td><td><code>partial</code></td><td><code>oracle_order_presence</code></td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_ORDER_BY_MISSING</code></td></tr>
       <tr><td><code>SAFE_REWRITE_FORBIDDEN_CONSTRUCTS</code></td><td><code>yes</code></td><td><code>forbidden_constructs_catalog</code></td><td><code>data/sql_guard/forbidden_constructs.yaml</code></td><td>catalog labels, not integrated here</td></tr>
@@ -663,8 +663,8 @@ LIMIT 100;</code></pre></td>
       <tr><td>Raw PII in projection</td><td><code>app/ast_pii_masking.py</code></td><td><code>DIRECT_SENSITIVE</code></td><td>Проверяет колонки в SELECT-проекции; PII в WHERE не флагуется этим модулем.</td></tr>
       <tr><td>Masking downgrade</td><td><code>app/ast_pii_masking.py</code></td><td><code>MASKING_DOWNGRADED</code></td><td>Эталон маскирует, candidate возвращает сырое значение.</td></tr>
       <tr><td>Masking class mismatch</td><td><code>app/ast_pii_masking.py</code></td><td><code>MASKING_TYPE_MISMATCH</code></td><td>Классы маскировки отличаются: например <code>hash</code> вместо <code>partial</code>.</td></tr>
-      <tr><td>Missing WHERE</td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_WHERE_MISSING</code></td><td>Проверяет только отсутствие WHERE, не смысл условия.</td></tr>
-      <tr><td>Missing/wider LIMIT</td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_LIMIT_MISSING</code>, <code>ORACLE_LIMIT_TOO_WIDE</code></td><td>Не проверяет кратность 10 и non-literal <code>LIMIT $1</code>.</td></tr>
+      <tr><td>Missing/mismatched WHERE</td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_WHERE_MISSING</code>, <code>ORACLE_WHERE_MISMATCH</code></td><td>Сравнивает candidate с oracle; не доказывает бизнес-смысл самого oracle.</td></tr>
+      <tr><td>Missing/wider/non-literal LIMIT</td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_LIMIT_MISSING</code>, <code>ORACLE_LIMIT_TOO_WIDE</code>, <code>ORACLE_LIMIT_UNCHECKED</code></td><td>Не проверяет allowed-step политику вроде <code>LIMIT 17</code>.</td></tr>
       <tr><td>Table/projection mismatch</td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_TABLES_MISMATCH</code>, <code>ORACLE_COLUMNS_MISSING</code>, <code>ORACLE_COLUMNS_EXTRA</code></td><td>Сравнивает candidate с oracle, но не читает <code>schema_scope</code>.</td></tr>
       <tr><td>Group/order mismatch</td><td><code>app/ast_oracle_check.py</code></td><td><code>ORACLE_GROUP_BY_MISSING</code>, <code>ORACLE_ORDER_BY_MISSING</code></td><td><code>ORDER BY</code> сейчас warning severity 3.</td></tr>
     </tbody>
