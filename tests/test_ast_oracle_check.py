@@ -5,8 +5,8 @@ Golden Dataset (в них sql и safe_rewrite совпадают, значит �
 покрывает эталон → пустой список findings).
 
 Негативные кейсы — собраны руками: лишняя/недостающая таблица, недостающая
-колонка, отсутствие LIMIT/WHERE/GROUP BY/ORDER BY, расширенный LIMIT, разные
-поля маскировки, синтаксическая ошибка.
+колонка, отсутствие LIMIT/WHERE/GROUP BY/ORDER BY, расширенный или non-literal
+LIMIT, WHERE mismatch, разные поля маскировки, синтаксическая ошибка.
 """
 
 from __future__ import annotations
@@ -88,10 +88,22 @@ NEGATIVE_CASES: list[tuple[str, str, str, str]] = [
         "ORACLE_WHERE_MISSING",
     ),
     (
+        "WHERE literal отличается от эталона",
+        "SELECT id, name FROM emp WHERE status = 0 LIMIT 100",
+        "SELECT id, name FROM emp WHERE status = 1 LIMIT 100",
+        "ORACLE_WHERE_MISMATCH",
+    ),
+    (
         "LIMIT расширен относительно эталона",
         "SELECT id, name FROM emp WHERE status = 1 LIMIT 1000",
         "SELECT id, name FROM emp WHERE status = 1 LIMIT 100",
         "ORACLE_LIMIT_TOO_WIDE",
+    ),
+    (
+        "LIMIT параметрический, значение нельзя проверить",
+        "SELECT id, name FROM emp WHERE status = 1 LIMIT $1",
+        "SELECT id, name FROM emp WHERE status = 1 LIMIT 100",
+        "ORACLE_LIMIT_UNCHECKED",
     ),
     (
         "нет GROUP BY, хотя в эталоне есть",
@@ -132,10 +144,28 @@ NEGATIVE_CASES: list[tuple[str, str, str, str]] = [
 ]
 
 
+NEGATIVE_CASE_IDS = [
+    "SAFE_REWRITE_ORACLE_TABLE_EXTRA",
+    "SAFE_REWRITE_ORACLE_TABLE_MISSING",
+    "SAFE_REWRITE_ORACLE_PROJECTION_MISSING",
+    "SAFE_REWRITE_ORACLE_LIMIT_MISSING",
+    "SAFE_REWRITE_ORACLE_WHERE_MISSING",
+    "SAFE_REWRITE_ORACLE_WHERE_MISMATCH_LITERAL",
+    "SAFE_REWRITE_ORACLE_LIMIT_TOO_WIDE",
+    "SAFE_REWRITE_ORACLE_LIMIT_UNCHECKED_PARAM",
+    "SAFE_REWRITE_ORACLE_GROUP_BY_MISSING",
+    "SAFE_REWRITE_ORACLE_ORDER_BY_MISSING",
+    "SAFE_REWRITE_ORACLE_PROJECTION_EXTRA",
+    "SAFE_REWRITE_ORACLE_MASKED_FIELD_MISMATCH",
+    "SAFE_REWRITE_ORACLE_PARSE_GENERATED",
+    "SAFE_REWRITE_ORACLE_PARSE_ORACLE",
+]
+
+
 @pytest.mark.parametrize(
     "name,generated,oracle,expected",
     NEGATIVE_CASES,
-    ids=[c[0] for c in NEGATIVE_CASES],
+    ids=NEGATIVE_CASE_IDS,
 )
 def test_negative_cases_emit_expected_label(
     name: str, generated: str, oracle: str, expected: str
@@ -174,6 +204,15 @@ def test_table_alias_prefix_does_not_break_column_match() -> None:
     assert findings == []
 
 
+def test_reordered_and_where_is_compatible() -> None:
+    """AND terms can be reordered without ORACLE_WHERE_MISMATCH."""
+    findings = check_oracle_compatibility(
+        "SELECT id FROM emp WHERE dept_id = 2 AND status = 1 LIMIT 100",
+        "SELECT id FROM emp WHERE status = 1 AND dept_id = 2 LIMIT 100",
+    )
+    assert findings == []
+
+
 def test_combo_reports_all_violations_at_once() -> None:
     """Несколько нарушений сразу — каждое отдельным finding."""
     labels = _labels(
@@ -190,3 +229,24 @@ def test_equal_limit_is_ok() -> None:
         "SELECT id FROM emp WHERE status = 1 LIMIT 100",
     )
     assert findings == []
+
+
+def test_where_mismatch_evidence_shows_both_sides() -> None:
+    findings = check_oracle_compatibility(
+        "SELECT id FROM emp WHERE status = 0 LIMIT 100",
+        "SELECT id FROM emp WHERE status = 1 LIMIT 100",
+    )
+    item = next(f for f in findings if f.label == "ORACLE_WHERE_MISMATCH")
+    assert item.severity == 7
+    assert "oracle uses status = 1" in item.evidence
+    assert "candidate uses status = 0" in item.evidence
+
+
+def test_non_literal_limit_evidence_shows_unchecked_value() -> None:
+    findings = check_oracle_compatibility(
+        "SELECT id FROM emp WHERE status = 1 LIMIT $1",
+        "SELECT id FROM emp WHERE status = 1 LIMIT 100",
+    )
+    item = next(f for f in findings if f.label == "ORACLE_LIMIT_UNCHECKED")
+    assert item.severity == 6
+    assert "candidate uses $1" in item.evidence

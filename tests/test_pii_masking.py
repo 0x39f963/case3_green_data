@@ -2,7 +2,7 @@
 
 Сценарии из ТЗ: сырой PII без эталона → DIRECT_SENSITIVE; понижение класса
 относительно эталона → MASKING_DOWNGRADED; иной класс → MASKING_TYPE_MISMATCH;
-PII в WHERE (не в проекции) → ОК; алиас `email AS contact` → всё ещё сырая PII.
+PII в WHERE (не в проекции) → ОК; алиас и concat/format wrapper не маскируют PII.
 """
 
 from __future__ import annotations
@@ -38,16 +38,37 @@ NO_ORACLE_CASES: list[tuple[str, str, set[str]]] = [
      "SELECT lower(email) AS e FROM sys_employee", {"DIRECT_SENSITIVE"}),
     ("concat(email, ...) — PII первый аргумент, сырой",
      "SELECT concat(email, '!') AS e FROM sys_employee", {"DIRECT_SENSITIVE"}),
-    ("concat('user:', email) — PII не первый аргумент, format",
-     "SELECT concat('user:', email) AS e FROM sys_employee", set()),
+    ("concat('user:', email) — wrapper не маскирует",
+     "SELECT concat('user:', email) AS e FROM sys_employee", {"DIRECT_SENSITIVE"}),
+    ("format('email:%s', email) — wrapper не маскирует",
+     "SELECT format('email:%s', email) AS e FROM sys_employee", {"DIRECT_SENSITIVE"}),
+    ("concat('user:', md5(email)) — сначала маска, потом wrapper",
+     "SELECT concat('user:', md5(email)) AS e FROM sys_employee", set()),
     ("substring(phone) без длины — pass-through, сырой",
      "SELECT substring(phone) AS p FROM sys_employee", {"DIRECT_SENSITIVE"}),
     ("regexp_replace(phone,...) — класс replace",
      "SELECT regexp_replace(phone, '.', '*') AS p FROM sys_employee", set()),
 ]
 
+NO_ORACLE_CASE_IDS = [
+    "SAFE_REWRITE_PII_RAW_COLUMN",
+    "SAFE_REWRITE_PII_ALIAS_RAW",
+    "SAFE_REWRITE_PII_HASH_OK",
+    "SAFE_REWRITE_PII_AGGREGATE_OK",
+    "SAFE_REWRITE_PII_PARTIAL_OK",
+    "SAFE_REWRITE_PII_WHERE_IGNORED",
+    "SAFE_REWRITE_PII_NO_PROJECTION",
+    "SAFE_REWRITE_PII_UNKNOWN_FUNC_RAW",
+    "SAFE_REWRITE_PII_CONCAT_RAW_FIRST_ARG",
+    "SAFE_REWRITE_PII_CONCAT_RAW_WRAPPED",
+    "SAFE_REWRITE_PII_FORMAT_RAW_WRAPPED",
+    "SAFE_REWRITE_PII_CONCAT_MASKED_OK",
+    "SAFE_REWRITE_PII_PARTIAL_NO_LENGTH_RAW",
+    "SAFE_REWRITE_PII_REPLACE_OK",
+]
 
-@pytest.mark.parametrize("name,sql,expected", NO_ORACLE_CASES, ids=[c[0] for c in NO_ORACLE_CASES])
+
+@pytest.mark.parametrize("name,sql,expected", NO_ORACLE_CASES, ids=NO_ORACLE_CASE_IDS)
 def test_no_oracle(name: str, sql: str, expected: set[str]) -> None:
     assert _labels(sql) == expected, name
 
@@ -106,8 +127,24 @@ ORACLE_CASES: list[tuple[str, str, str, set[str]]] = [
 ]
 
 
+ORACLE_CASE_IDS = [
+    "SAFE_REWRITE_PII_ORACLE_HASH_DOWNGRADE",
+    "SAFE_REWRITE_PII_ORACLE_HASH_OK",
+    "SAFE_REWRITE_PII_ORACLE_SAME_CLASS_HASH_OK",
+    "SAFE_REWRITE_PII_ORACLE_PARTIAL_VS_HASH",
+    "SAFE_REWRITE_PII_ORACLE_HASH_VS_PARTIAL",
+    "SAFE_REWRITE_PII_ORACLE_REPLACE_VS_PARTIAL",
+    "SAFE_REWRITE_PII_ORACLE_AGGREGATE_OK",
+    "SAFE_REWRITE_PII_ORACLE_PARTIAL_DOWNGRADE",
+    "SAFE_REWRITE_PII_ORACLE_RAW_ABSENT_COLUMN",
+    "SAFE_REWRITE_PII_ORACLE_CANDIDATE_DROPS_PII",
+    "SAFE_REWRITE_PII_ORACLE_NULL_OK",
+    "SAFE_REWRITE_PII_ORACLE_RAW_ALLOWED",
+]
+
+
 @pytest.mark.parametrize(
-    "name,gen,oracle,expected", ORACLE_CASES, ids=[c[0] for c in ORACLE_CASES]
+    "name,gen,oracle,expected", ORACLE_CASES, ids=ORACLE_CASE_IDS
 )
 def test_with_oracle(name: str, gen: str, oracle: str, expected: set[str]) -> None:
     assert _labels(gen, oracle) == expected, name
@@ -147,3 +184,10 @@ def test_downgrade_severity_is_high() -> None:
     )
     assert findings[0].label == "MASKING_DOWNGRADED"
     assert findings[0].severity == 8
+
+
+def test_direct_sensitive_evidence_explains_wrapper_risk() -> None:
+    findings = check_pii_masking("SELECT concat('email:', email) FROM sys_employee", SENSITIVE)
+    assert findings[0].label == "DIRECT_SENSITIVE"
+    assert "raw PII column 'email'" in findings[0].evidence
+    assert "wrapper is not masking" in findings[0].evidence

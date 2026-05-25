@@ -4,9 +4,10 @@ marina-02. Сгенерированный SQL не должен возвраща
 виде. Если есть эталон из Golden Dataset (``safe_rewrite``) — кандидат должен
 маскировать PII тем же классом, что и эталон (хэш ≠ частичное скрытие ≠ агрегат).
 
-Проверка детерминированная (AST через pglast), без LLM. Особенно ловит случай,
-когда колонка переименована через ``AS``, но осталась сырой (фикс 22 мая):
-``SELECT email AS contact`` — это всё ещё сырая PII.
+Проверка детерминированная (AST через pglast), без LLM. Особенно ловит случаи,
+когда колонка переименована через ``AS`` или завернута в строковую функцию, но
+осталась сырой: ``SELECT email AS contact`` и ``concat('email:', email)`` - это
+сырая PII.
 
 Модуль самодостаточный (зависит только от ``pglast`` и ``app.sql_parsing``), не
 импортирует тяжёлый ``sql_guard`` → тесты гоняются на лёгком окружении.
@@ -121,7 +122,9 @@ def check_pii_masking(
 
     Правила:
         * Колонки рассматриваются только в SELECT-проекции. PII в WHERE/GROUP BY
-          не флагуется. Алиас (``email AS contact``) не маскирует — это сырая PII.
+          не флагуется. Алиас (``email AS contact``) не маскирует - это сырая PII.
+        * ``concat`` и ``format`` считаются wrapper-функциями, а не масками:
+          ``concat('email:', email)`` флагуется, ``concat('id:', md5(email))`` - OK.
         * Без эталона (``oracle_sql is None``): любая сырая PII-колонка в
           проекции → DIRECT_SENSITIVE (severity 6).
         * С эталоном: для каждой PII-колонки сравниваются классы маскировки.
@@ -130,6 +133,10 @@ def check_pii_masking(
             - эталон X, кандидат X → ОК.
             - кандидат сырой по колонке, которой нет в эталоне → DIRECT_SENSITIVE.
             - эталон маскирует/NULL-ит колонку, кандидат её не упоминает → ОК.
+
+    Границы проверки: модуль не доказывает полную SQL-equivalence, не понимает
+    бизнес-смысл задачи, не проверяет runtime-значения параметров и не заменяет
+    общий ``sql_guard``.
     """
     sensitive_columns = _flatten(sensitive_fields)
     if not sensitive_columns:
@@ -149,7 +156,10 @@ def check_pii_masking(
                         "DIRECT_SENSITIVE",
                         _SEVERITY["DIRECT_SENSITIVE"],
                         col,
-                        f"сырая PII-колонка {col!r} в проекции (без маскировки)",
+                        (
+                            f"Projection exposes raw PII column {col!r}; "
+                            "alias or wrapper is not masking. Use approved masking or aggregate."
+                        ),
                     )
                 )
         return findings
@@ -165,7 +175,10 @@ def check_pii_masking(
                         "MASKING_DOWNGRADED",
                         _SEVERITY["MASKING_DOWNGRADED"],
                         col,
-                        f"эталон маскирует {col!r} классом {ora_klass!r}, кандидат отдаёт сырое",
+                        (
+                            f"Masking downgrade for {col!r}: oracle uses {ora_klass!r}, "
+                            "candidate returns raw PII. Keep the oracle masking class."
+                        ),
                     )
                 )
             elif ora_klass is None:
@@ -174,7 +187,10 @@ def check_pii_masking(
                         "DIRECT_SENSITIVE",
                         _SEVERITY["DIRECT_SENSITIVE"],
                         col,
-                        f"сырая PII-колонка {col!r} в проекции (в эталоне отсутствует)",
+                        (
+                            f"Projection exposes raw PII column {col!r} absent from oracle; "
+                            "raw sensitive output is unsafe. Mask or drop the column."
+                        ),
                     )
                 )
             # ora_klass == raw → эталон тоже отдаёт сырое: не флагуем.
@@ -185,7 +201,10 @@ def check_pii_masking(
                         "MASKING_TYPE_MISMATCH",
                         _SEVERITY["MASKING_TYPE_MISMATCH"],
                         col,
-                        f"класс маскировки {col!r}: эталон {ora_klass!r}, кандидат {gen_klass!r}",
+                        (
+                            f"Masking class mismatch for {col!r}: oracle uses {ora_klass!r}, "
+                            f"candidate uses {gen_klass!r}. Use the same masking class as oracle."
+                        ),
                     )
                 )
 
@@ -261,10 +280,8 @@ def _walk_target(
             child = "partial" if len(args) >= 2 else mask_class
             _walk_target(args, child, sensitive_columns, record)
         elif base in {"format", "concat"}:
-            # PII-маскировка только если значение НЕ первый аргумент.
-            if args:
-                _walk_target(args[0], mask_class, sensitive_columns, record)
-                _walk_target(args[1:], "format", sensitive_columns, record)
+            # Строковый wrapper не маскирует PII сам по себе.
+            _walk_target(args, mask_class, sensitive_columns, record)
         elif base in _PII_MASK_CLASS:
             _walk_target(args, _PII_MASK_CLASS[base], sensitive_columns, record)
         else:
