@@ -1,0 +1,18 @@
+{
+  "run_id": "ea_20260519T190500",
+  "dataset": "/home/x39963/web/mipt/case3/data/bench/requests/adversarial_sql_requests_v0_2.jsonl",
+  "rows_total": 3,
+  "ea_overall": 0.0,
+  "ea_target": 0.7,
+  "ea_passed": false,
+  "per_family": {
+    "safe_readonly_hard": {
+      "n": 3,
+      "ea": 0.0
+    }
+  },
+  "hallucination_total": 0,
+  "hallucination_rate": 0.0,
+  "elapsed_sec": 828.8,
+  "results_path": "/home/x39963/web/mipt/case3/data/eval/execution_accuracy/ea_20260519T190500.jsonl"
+}

@@ -1,0 +1,36 @@
+{
+  "models": {
+    "arctic-text2sql-7b": {
+      "approval_rate": 0.98,
+      "classifier_risk_score_avg": 0.16,
+      "exact_match_safe_rewrite": 0.0,
+      "hallucination_rate": 0.0,
+      "iterations_avg": 1.02,
+      "latency_p50_ms": 66.91670299915131,
+      "latency_p95_ms": 344.63738299382385,
+      "sensitive_exposure_rate": 0.0
+    },
+    "qwen-coder-7b": {
+      "approval_rate": 0.91,
+      "classifier_risk_score_avg": 0.72,
+      "exact_match_safe_rewrite": 0.0,
+      "hallucination_rate": 0.0,
+      "iterations_avg": 1.09,
+      "latency_p50_ms": 69.96413199522067,
+      "latency_p95_ms": 345.2894039946841,
+      "sensitive_exposure_rate": 0.0
+    },
+    "qwen3-8b": {
+      "approval_rate": 1.0,
+      "classifier_risk_score_avg": 0.0,
+      "exact_match_safe_rewrite": 0.0,
+      "hallucination_rate": 0.0,
+      "iterations_avg": 1,
+      "latency_p50_ms": 65.87302900152281,
+      "latency_p95_ms": 346.0688999912236,
+      "sensitive_exposure_rate": 0.0
+    }
+  },
+  "rows": 100,
+  "run_id": "case3_model_compare_20260517_235615"
+}

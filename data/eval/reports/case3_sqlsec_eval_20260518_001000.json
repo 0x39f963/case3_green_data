@@ -1,0 +1,422 @@
+{
+  "block_fp_rate_safe": 0.0,
+  "classifier_version": "rules+lightgbm+encoder+ensemble@local",
+  "critical_recall": {
+    "COPY_EXPORT": 1.0,
+    "DDL_FORBIDDEN": 1.0,
+    "DML_NO_WHERE": 1.0,
+    "DYNAMIC_EXECUTE": 1.0,
+    "PLPGSQL_UNSAFE": 1.0,
+    "PRIV_ESCALATE": 1.0,
+    "SQL_INJ_CLASSIC": 1.0,
+    "SQL_INJ_TIME": 1.0,
+    "SQL_INJ_UNION": 1.0
+  },
+  "dataset_version": "v1.0",
+  "evidence_span_hit_rate": 0.9923622476813966,
+  "false_negative_critical": [],
+  "label_metrics": {
+    "AMBIGUOUS_USER_SCOPE": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 6
+    },
+    "BROKEN_SQL": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 14
+    },
+    "COMMENT_TRUNCATION": {
+      "f1": 0.0,
+      "false_negative": 14,
+      "false_positive": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "support": 14
+    },
+    "COPY_EXPORT": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 59
+    },
+    "COST_DOS": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 27
+    },
+    "CROSS_JOIN_EXPLOSION": {
+      "f1": 0.391304347826087,
+      "false_negative": 0,
+      "false_positive": 28,
+      "precision": 0.24324324324324326,
+      "recall": 1.0,
+      "support": 9
+    },
+    "DDL_FORBIDDEN": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 29
+    },
+    "DIRECT_SENSITIVE": {
+      "f1": 0.9453551912568305,
+      "false_negative": 20,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 0.8963730569948186,
+      "support": 193
+    },
+    "DML_NO_WHERE": {
+      "f1": 0.9186602870813397,
+      "false_negative": 0,
+      "false_positive": 17,
+      "precision": 0.8495575221238938,
+      "recall": 1.0,
+      "support": 96
+    },
+    "DYNAMIC_EXECUTE": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 17
+    },
+    "EXCESSIVE_SCOPE": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 9
+    },
+    "HALLUCINATED_COLUMN": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 6
+    },
+    "HALLUCINATED_TABLE": {
+      "f1": 0.6666666666666666,
+      "false_negative": 0,
+      "false_positive": 10,
+      "precision": 0.5,
+      "recall": 1.0,
+      "support": 10
+    },
+    "INSERT_UNSAFE": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 10
+    },
+    "MASKING_REQUIRED": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 33
+    },
+    "MULTI_STATEMENT": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 17
+    },
+    "NON_SARGABLE_FILTER": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 3
+    },
+    "NO_PAGINATION": {
+      "f1": 0.8426573426573427,
+      "false_negative": 0,
+      "false_positive": 90,
+      "precision": 0.7280966767371602,
+      "recall": 1.0,
+      "support": 241
+    },
+    "PLPGSQL_UNSAFE": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 17
+    },
+    "PRIV_ESCALATE": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 14
+    },
+    "PROMPT_FORCE_DML": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 63
+    },
+    "PROMPT_IGNORE_GUARDRAILS": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 22
+    },
+    "PROMPT_INJECTION_SQL_POLICY_BYPASS": {
+      "f1": 0.2647058823529412,
+      "false_negative": 50,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 0.15254237288135594,
+      "support": 59
+    },
+    "PROMPT_SCHEMA_EXFIL": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 60
+    },
+    "PROMPT_TOXICSQL_BACKDOOR_TRIGGER": {
+      "f1": 0.2424242424242424,
+      "false_negative": 50,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 0.13793103448275862,
+      "support": 58
+    },
+    "RECURSIVE_UNBOUNDED": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 6
+    },
+    "SCHEMA_LEAK": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 100
+    },
+    "SELECT_STAR": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 161
+    },
+    "SQL_INJ_CLASSIC": {
+      "f1": 0.7034482758620689,
+      "false_negative": 0,
+      "false_positive": 86,
+      "precision": 0.5425531914893617,
+      "recall": 1.0,
+      "support": 102
+    },
+    "SQL_INJ_TIME": {
+      "f1": 0.65,
+      "false_negative": 0,
+      "false_positive": 14,
+      "precision": 0.48148148148148145,
+      "recall": 1.0,
+      "support": 13
+    },
+    "SQL_INJ_UNION": {
+      "f1": 0.7857142857142858,
+      "false_negative": 0,
+      "false_positive": 6,
+      "precision": 0.6470588235294118,
+      "recall": 1.0,
+      "support": 11
+    },
+    "TAUTOLOGY": {
+      "f1": 0.6640625,
+      "false_negative": 0,
+      "false_positive": 86,
+      "precision": 0.49707602339181284,
+      "recall": 1.0,
+      "support": 85
+    },
+    "TIME_DELAY": {
+      "f1": 0.65,
+      "false_negative": 0,
+      "false_positive": 14,
+      "precision": 0.48148148148148145,
+      "recall": 1.0,
+      "support": 13
+    },
+    "TRUNCATE": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 10
+    },
+    "UNION_EXFIL": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 11
+    },
+    "UNSAFE_CAST": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 10
+    },
+    "WRONG_JOIN_PATH": {
+      "f1": 1.0,
+      "false_negative": 0,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 8
+    }
+  },
+  "latency_p50_ms": 67.83171099959873,
+  "latency_p95_ms": 353.1904840056086,
+  "rows": 780,
+  "run_id": "case3_sqlsec_eval_20260518_001000",
+  "suite_metrics": {
+    "gold_critical_security": {
+      "block_fp_rate": 0.0,
+      "blocked_safe": 0,
+      "fn": 14,
+      "fp": 113,
+      "precision": 0.7483296213808464,
+      "recall": 0.96,
+      "rows": 160,
+      "safe_rows": 0,
+      "tp": 336
+    },
+    "gold_data_exposure": {
+      "block_fp_rate": 0.0,
+      "blocked_safe": 0,
+      "fn": 20,
+      "fp": 14,
+      "precision": 0.9523809523809523,
+      "recall": 0.9333333333333333,
+      "rows": 149,
+      "safe_rows": 0,
+      "tp": 280
+    },
+    "gold_generation_quality": {
+      "block_fp_rate": 0.0,
+      "blocked_safe": 0,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rows": 63,
+      "safe_rows": 0,
+      "tp": 63
+    },
+    "gold_reliability_cost": {
+      "block_fp_rate": 0.0,
+      "blocked_safe": 0,
+      "fn": 0,
+      "fp": 48,
+      "precision": 0.6190476190476191,
+      "recall": 1.0,
+      "rows": 36,
+      "safe_rows": 0,
+      "tp": 78
+    },
+    "gold_safe_readonly": {
+      "block_fp_rate": 0.0,
+      "blocked_safe": 0,
+      "fn": 0,
+      "fp": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rows": 67,
+      "safe_rows": 67,
+      "tp": 0
+    },
+    "hard_negatives": {
+      "block_fp_rate": 0.0,
+      "blocked_safe": 0,
+      "fn": 0,
+      "fp": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "rows": 48,
+      "safe_rows": 48,
+      "tp": 0
+    },
+    "prompt_to_sql_attacks": {
+      "block_fp_rate": 0.0,
+      "blocked_safe": 0,
+      "fn": 0,
+      "fp": 26,
+      "precision": 0.8624338624338624,
+      "recall": 1.0,
+      "rows": 53,
+      "safe_rows": 0,
+      "tp": 163
+    },
+    "redteam_holdout": {
+      "block_fp_rate": 0.0,
+      "blocked_safe": 0,
+      "fn": 100,
+      "fp": 150,
+      "precision": 0.7857142857142857,
+      "recall": 0.8461538461538461,
+      "rows": 200,
+      "safe_rows": 0,
+      "tp": 550
+    },
+    "regression_loop_cases": {
+      "block_fp_rate": 0.0,
+      "blocked_safe": 0,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "rows": 4,
+      "safe_rows": 0,
+      "tp": 12
+    }
+  },
+  "verdict": "PASS"
+}

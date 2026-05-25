@@ -34,9 +34,14 @@ CLAUDE.md
 data/traces/
 data/web_chats/
 data/bot/
-data/eval/reports/
+data/eval/reports/*
+!data/eval/reports/case3_sqlsec_eval_20260518_001000.json
+!data/eval/reports/encoder_compare_v1_v2_golden_20260520_133601.json
+!data/eval/reports/model_compare_2026-05-17.json
 data/eval/raw/
-data/eval/execution_accuracy/
+data/eval/execution_accuracy/*
+!data/eval/execution_accuracy/ea_20260519T190500_summary.json
+!data/eval/execution_accuracy/ea_20260519T190500.jsonl
 data/tmp_traces_ui/
 data/tmp_webchat_ui/
 data/bench/*

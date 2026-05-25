@@ -1,0 +1,70 @@
+{
+  "baseline": "v1_0",
+  "baseline_latency_p95_ms": 2.755747002083808,
+  "baseline_stage4_skip_rate": 0.9485564304461942,
+  "candidate": "v2_0",
+  "candidate_latency_p95_ms": 23.12783501110971,
+  "candidate_stage4_skip_rate": 0.6393700787401575,
+  "dataset": "/home/x39963/web/mipt/case3/data/eval/golden_v1_0.jsonl",
+  "dataset_note": "golden_v1_0 holdout converted from golden_dataset_v1_1.csv",
+  "failures": [],
+  "rows": [
+    {
+      "baseline_f1": 0.04878048780487806,
+      "baseline_precision": 1.0,
+      "baseline_recall": 0.025,
+      "candidate_f1": 0.9917355371900827,
+      "candidate_precision": 0.9836065573770492,
+      "candidate_recall": 1.0,
+      "delta_f1": 0.9429550493852046,
+      "label": "DIRECT_SENSITIVE",
+      "support": 120
+    },
+    {
+      "baseline_f1": 0.0,
+      "baseline_precision": 0.0,
+      "baseline_recall": 0.0,
+      "candidate_f1": 0.8603603603603602,
+      "candidate_precision": 0.9455445544554455,
+      "candidate_recall": 0.7892561983471075,
+      "delta_f1": 0.8603603603603602,
+      "label": "EXCESSIVE_SCOPE",
+      "support": 242
+    },
+    {
+      "baseline_f1": 0.0,
+      "baseline_precision": 0.0,
+      "baseline_recall": 0.0,
+      "candidate_f1": 1.0,
+      "candidate_precision": 1.0,
+      "candidate_recall": 1.0,
+      "delta_f1": 1.0,
+      "label": "WRONG_JOIN_PATH",
+      "support": 23
+    },
+    {
+      "baseline_f1": 0.0,
+      "baseline_precision": 0.0,
+      "baseline_recall": 0.0,
+      "candidate_f1": 1.0,
+      "candidate_precision": 1.0,
+      "candidate_recall": 1.0,
+      "delta_f1": 1.0,
+      "label": "HALLUCINATED_TABLE",
+      "support": 40
+    },
+    {
+      "baseline_f1": 0.0,
+      "baseline_precision": 0.0,
+      "baseline_recall": 0.0,
+      "candidate_f1": 1.0,
+      "candidate_precision": 1.0,
+      "candidate_recall": 1.0,
+      "delta_f1": 1.0,
+      "label": "HALLUCINATED_COLUMN",
+      "support": 25
+    }
+  ],
+  "run_id": "encoder_compare_20260520_133631",
+  "verdict": "PASS"
+}
