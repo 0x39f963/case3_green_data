@@ -18,6 +18,7 @@ router = APIRouter(tags=["web-audits"])
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = ROOT / "app" / "templates"
 ASSET_DIR = ROOT / "app" / "static" / "audit_reviews"
+DATASET_DIR = ROOT / "data" / "eval"
 ALLOWED_ASSETS = {
     "shared.css",
     "audit_run_compare.css",
@@ -28,6 +29,9 @@ ALLOWED_ASSETS = {
     "settings_tariffs.js",
     "batch_cases.css",
     "batch_cases.js",
+}
+ALLOWED_DATASET_ASSETS = {
+    "golden_v2.jsonl",
 }
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -141,6 +145,11 @@ def _base_context(active: str) -> dict[str, object]:
 
 @router.get("/web/audits/static/{name}")
 def audit_asset(name: str) -> FileResponse:
+    if name in ALLOWED_DATASET_ASSETS:
+        path = DATASET_DIR / name
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="asset not found")
+        return FileResponse(path, media_type="application/x-ndjson")
     if name not in ALLOWED_ASSETS:
         raise HTTPException(status_code=404, detail="asset not found")
     path = ASSET_DIR / name
