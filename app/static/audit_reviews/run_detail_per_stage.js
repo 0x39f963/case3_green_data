@@ -803,19 +803,10 @@
       y1: 1,
       line: {color: "rgba(100,116,139,.22)", width: 1, dash: "dot"}
     }));
-    const selectedCase = approveState.caseId ? approveState.rows.find(row => String(row.case_id || "").includes(approveState.caseId)) : null;
-    const annotations = selectedCase ? [{
-      x: selectedCase.dataset_idx,
-      y: selectedCase.approved ? 1 : -1,
-      text: esc(selectedCase.case_id),
-      showarrow: true,
-      arrowhead: 2,
-      ax: 0,
-      ay: -36,
-      bgcolor: "#ffffff",
-      bordercolor: "#2563eb",
-      font: {size: 11, color: "#0f172a"}
-    }] : [];
+    let selectedCase = approveState.caseId ? approveState.rows.find(row => String(row.case_id || "").includes(approveState.caseId)) : null;
+    if(approveState.caseId && !selectedCase) approveState.caseId = "";
+    const selectedNote = approveAnnotation(selectedCase);
+    const annotations = selectedNote ? [selectedNote] : [];
     const x = rows.map(row => row.dataset_idx);
     const y = rows.map(row => row.approved ? 1 : -1);
     const sizes = rows.map(row => {
@@ -831,7 +822,7 @@
     const lineColor = rows.map(row => row.loop_flag ? bucketMeta.loop_fail.color : "#ffffff");
     const main = document.getElementById("approveMainChart");
     if(window.Plotly && main){
-      Plotly.newPlot(main, [{
+      const plotReady = Plotly.newPlot(main, [{
         type: "scatter",
         mode: "markers",
         x,
@@ -881,16 +872,44 @@
           if(row){
             approveState.caseId = row.case_id;
             writeApproveHash();
-            renderApproveCharts();
+            setApproveAnnotation(row);
             renderApproveCasePanel(row, true);
+            showApproveHoverPopover(row, point, true);
           }
         }
       });
+      plotReady.then(() => {
+        if(selectedCase){
+          renderApproveCasePanel(selectedCase, true);
+          showApproveHoverPopover(selectedCase, null, true);
+        }
+      }).catch(console.warn);
     }
     renderApproveRateChart(totalCases, shapes);
-    if(selectedCase){
-      renderApproveCasePanel(selectedCase, true);
-      showApproveHoverPopover(selectedCase, null, true);
+  }
+
+  function approveAnnotation(row){
+    if(!row) return null;
+    return {
+      x: row.dataset_idx,
+      y: row.approved ? 1 : -1,
+      text: esc(row.case_id),
+      showarrow: true,
+      arrowhead: 2,
+      ax: 0,
+      ay: -36,
+      bgcolor: "#ffffff",
+      bordercolor: "#2563eb",
+      font: {size: 11, color: "#0f172a"}
+    };
+  }
+
+  function setApproveAnnotation(row){
+    const main = document.getElementById("approveMainChart");
+    if(window.Plotly && main){
+      const note = approveAnnotation(row);
+      const task = Plotly.relayout(main, {annotations: note ? [note] : []});
+      if(task?.catch) task.catch(console.warn);
     }
   }
 
@@ -1004,7 +1023,7 @@
         approveState.caseId = "";
         writeApproveHash();
         hideApproveHoverPopover(true);
-        renderApproveCharts();
+        setApproveAnnotation(null);
         renderApproveCasePanel(row, false);
       });
     }
