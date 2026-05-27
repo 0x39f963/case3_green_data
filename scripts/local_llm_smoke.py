@@ -41,7 +41,11 @@ def main() -> int:
 
 def _args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-url", default=os.environ.get("LOCAL_LLM_BASE_URL", "http://localhost:11434/v1"))
+    parser.add_argument(
+        "--base-url",
+        default=os.environ.get("HOST_LOCAL_LLM_BASE_URL")
+        or os.environ.get("LOCAL_LLM_BASE_URL", "http://localhost:11434/v1"),
+    )
     parser.add_argument("--api-key", default=os.environ.get("LOCAL_LLM_API_KEY", "not-needed"))
     parser.add_argument("--model", default=os.environ.get("LOCAL_LLM_TEST_MODEL", "qwen3:8b"))
     parser.add_argument("--max-tokens", type=int, default=160)

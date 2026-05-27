@@ -41,6 +41,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ../data/eval:/app/data/eval:rw
+      - ../data/bench:/app/data/bench:rw
     ports:
       - "${BENCH_API_PORT:-18080}:8080"
     healthcheck:

@@ -2,7 +2,7 @@
 
 Минимальный workflow для запуска `case3_app` с тремя локальными бэкендами:
 
-1. **Local Ollama** (`local_openai` контур) — реальные Ollama-модели хоста через `local-llm-proxy`.
+1. **Local Ollama** (`local_openai` контур) — реальные Ollama-модели через host-published endpoint `host.docker.internal:11434`.
 2. **Claude Code CLI** (`claude_cli` контур) — устанавливается в image, auth берётся из `~/.claude` хоста.
 3. **Codex CLI** (`codex_cli` контур) — то же самое, auth из `~/.codex` хоста.
 
@@ -27,11 +27,11 @@ docker compose --profile local-llm up -d --build app local-llm-proxy
 
 Что произойдёт:
 
-- `local-llm-proxy` (Ollama) поднимется на compose-сети с DNS-именем `local-llm-proxy:11434`.
+- `local-llm-proxy` (Ollama) поднимется и опубликует порт `11434` на host.
 - `app` (case3_app) пересоберётся с установленным claude + codex (см. `deploy/Dockerfile`, `npm install -g`).
 - Auth-директории `~/.claude`, `~/.codex`, `~/.claude.json` смонтируются read-write в `/home/appuser/.{claude,codex}` контейнера.
 - CLI subprocess запускается с `HOME=/home/appuser`, чтобы Claude Code не падал на root/sudo restrictions.
-- `LOCAL_LLM_BASE_URL=http://local-llm-proxy:11434/v1` (compose DNS) будет резолвиться.
+- `LOCAL_LLM_BASE_URL=http://host.docker.internal:11434/v1` - канонический endpoint для app и batch runtime.
 - `TABLE_KNOWLEDGE_V2_ENABLED=true` и `RAG_BRIDGE_BLACKLIST_ROLES=bridge_multiselect` задефолчены.
 
 ## 3. Verification
@@ -69,7 +69,7 @@ provider namespaces; для Ollama правильная команда `ollama p
 |---|---|---|
 | `config_error: CLI claude не найден` | image не пересобран после Phase 7 | `docker compose build app` |
 | `auth failure: ... Залогинься на хосте` | `~/.claude` / `~/.codex` пустые на хосте | `claude login` / `codex login` |
-| `provider_unavailable: Ollama provider unavailable: ... name resolution` | `case3_app` запущен через `docker run`, не compose | стопнуть standalone, запустить через `docker compose --profile local-llm up -d` |
+| `provider_unavailable: Ollama provider unavailable: ... name resolution` | runtime не видит `host.docker.internal` или контейнер поднят без `extra_hosts` | проверить `docker exec case3_app getent hosts host.docker.internal`, затем пересоздать только `app` с compose |
 | `available_by_config=false` для CLI presets | binary не в PATH контейнера | проверить `docker exec case3_app which claude codex` |
 | `available_by_config=false` для local preset | модель не скачана в Ollama | `docker exec case3_local_llm ollama list`, затем `ollama pull <provider_model>` |
 | `CLI claude quota/rate limit` | Claude auth есть, но лимит аккаунта исчерпан | дождаться reset; это не ошибка интеграции |

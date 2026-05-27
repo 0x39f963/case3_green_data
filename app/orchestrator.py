@@ -1139,10 +1139,11 @@ class SQLSecuritySystem(_BaseSystem):
         # Каждый цикл итерации - восемь узлов. Ставим запас, чтобы пять
         # итераций не упирались в лимит рекурсии LangGraph.
         try:
-            final_state = _graph().invoke(
-                initial_state,
-                config={"recursion_limit": self.max_iterations * 9 + 4},
-            )
+            with llm_provider.request_context(trace.request_id):
+                final_state = _graph().invoke(
+                    initial_state,
+                    config={"recursion_limit": self.max_iterations * 9 + 4},
+                )
         except LLMConfigError as exc:
             # Конфигурационные ошибки не глотаем - они должны дойти до
             # API-слоя и превратиться в HTTP 400, чтобы клиент починил .env.

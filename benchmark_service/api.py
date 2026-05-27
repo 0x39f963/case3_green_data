@@ -422,6 +422,19 @@ def benchmark_run_progress(benchmark_run_id: str) -> dict[str, Any]:
     return result
 
 
+@app.get("/v1/benchmarks/runs/{benchmark_run_id}/runner-log")
+def benchmark_run_runner_log(benchmark_run_id: str, tail: int = Query(200, ge=1, le=2000)) -> dict[str, Any]:
+    try:
+        result = runner_supervisor.read_runner_log(benchmark_run_id, tail=tail)
+    except FileNotFoundError:
+        api_error(404, "not_found", "Runner log not found.")
+    except Exception as exc:
+        api_error(500, "log_read_failed", str(exc))
+    if not result.get("exists"):
+        api_error(404, "not_found", "Runner log not found.", {"log_path": result.get("log_path")})
+    return result
+
+
 @app.get("/v1/benchmarks/runs/{benchmark_run_id}/hypotheses")
 def benchmark_run_hypotheses(benchmark_run_id: str, limit: int = 50) -> dict[str, Any]:
     try:

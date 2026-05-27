@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 import json
 import os
 import pwd
+import socket
 from pathlib import Path
 import shutil
 import subprocess
@@ -339,6 +340,10 @@ _PROMPT_CHECK_OPENROUTER_PROVIDER_OVERRIDE: contextvars.ContextVar[str | None] =
     "prompt_check_openrouter_provider_override",
     default=None,
 )
+_REQUEST_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "llm_request_id",
+    default=None,
+)
 _OPENROUTER_ENDPOINTS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _OPENROUTER_ENDPOINTS_TTL_SEC = 900
 
@@ -514,6 +519,16 @@ def _retry_record(attempt: int, exc: Exception, elapsed: float, wait: float) -> 
         "wait_sec": round(wait, 3),
         "message": str(exc)[:200],
     }
+
+
+@contextmanager
+def request_context(request_id: str | None) -> Iterator[None]:
+    """Attach current trace id to provider errors produced inside one run."""
+    token = _REQUEST_ID.set((request_id or "").strip() or None)
+    try:
+        yield
+    finally:
+        _REQUEST_ID.reset(token)
 
 
 class LLMClient:
@@ -820,7 +835,13 @@ class OpenAICompatibleClient(LLMClient):
                         retry_log.append(_retry_record(attempt, exc, elapsed, wait))
                         time.sleep(wait)
                         continue
-                    _raise_provider_exception(self.backend, exc)
+                    _raise_provider_exception(
+                        self.backend,
+                        exc,
+                        base_url=self._base_url,
+                        role=self.role,
+                        model=self.model,
+                    )
             except Exception as exc:
                 elapsed = time.perf_counter() - t0
                 if _is_retryable(exc) and attempt + 1 < max_attempts:
@@ -828,7 +849,13 @@ class OpenAICompatibleClient(LLMClient):
                     retry_log.append(_retry_record(attempt, exc, elapsed, wait))
                     time.sleep(wait)
                     continue
-                _raise_provider_exception(self.backend, exc)
+                _raise_provider_exception(
+                    self.backend,
+                    exc,
+                    base_url=self._base_url,
+                    role=self.role,
+                    model=self.model,
+                )
 
         # Unreachable: либо вернули в цикле, либо выбросили из _raise_provider_exception.
         raise ProviderUnavailable(_provider_label(self.backend) + " provider unavailable: retry loop exhausted")
@@ -878,7 +905,13 @@ class OpenAICompatibleClient(LLMClient):
                         retry_log.append(_retry_record(attempt, exc, elapsed, wait))
                         await asyncio.sleep(wait)
                         continue
-                    _raise_provider_exception(self.backend, exc)
+                    _raise_provider_exception(
+                        self.backend,
+                        exc,
+                        base_url=self._base_url,
+                        role=self.role,
+                        model=self.model,
+                    )
             except Exception as exc:
                 elapsed = time.perf_counter() - t0
                 if _is_retryable(exc) and attempt + 1 < max_attempts:
@@ -886,7 +919,13 @@ class OpenAICompatibleClient(LLMClient):
                     retry_log.append(_retry_record(attempt, exc, elapsed, wait))
                     await asyncio.sleep(wait)
                     continue
-                _raise_provider_exception(self.backend, exc)
+                _raise_provider_exception(
+                    self.backend,
+                    exc,
+                    base_url=self._base_url,
+                    role=self.role,
+                    model=self.model,
+                )
 
         raise ProviderUnavailable(_provider_label(self.backend) + " provider unavailable: retry loop exhausted")
 
@@ -894,9 +933,10 @@ class OpenAICompatibleClient(LLMClient):
 class OllamaNativeClient(LLMClient):
     """Native Ollama chat API client for models where /v1 returns reasoning only."""
 
-    def __init__(self, model: str, base_url: str, backend: str) -> None:
+    def __init__(self, model: str, base_url: str, backend: str, role: str = "direct") -> None:
         self.model = model
         self.backend = backend
+        self.role = role
         self.base_url = _ollama_base_url(base_url)
 
     def invoke(
@@ -945,9 +985,25 @@ class OllamaNativeClient(LLMClient):
                     raw = json.loads(resp.read().decode("utf-8"))
         except url_error.HTTPError as exc:
             text = exc.read().decode("utf-8", errors="replace")
-            raise ProviderUnavailable("Ollama provider unavailable: HTTP " + str(exc.code) + ": " + text) from exc
+            raise ProviderUnavailable(
+                "Ollama provider unavailable: HTTP " + str(exc.code) + ": " + text
+                + _provider_error_context(
+                    backend=self.backend,
+                    base_url=self.base_url,
+                    role=self.role,
+                    model=self.model,
+                )
+            ) from exc
         except (OSError, TimeoutError, json.JSONDecodeError) as exc:
-            raise ProviderUnavailable("Ollama provider unavailable: " + str(exc)) from exc
+            raise ProviderUnavailable(
+                "Ollama provider unavailable: " + str(exc)
+                + _provider_error_context(
+                    backend=self.backend,
+                    base_url=self.base_url,
+                    role=self.role,
+                    model=self.model,
+                )
+            ) from exc
 
         if isinstance(raw, dict):
             raw.setdefault("_client_keep_alive", keep_alive)
@@ -1620,28 +1676,37 @@ def _call_timeout_sec() -> int:
     return value
 
 
-def _raise_provider_exception(backend: str, exc: Exception) -> None:
+def _raise_provider_exception(
+    backend: str,
+    exc: Exception,
+    *,
+    base_url: str = "",
+    role: str = "",
+    model: str = "",
+) -> None:
     status_code = getattr(exc, "status_code", None)
     name = exc.__class__.__name__
+    ctx = _provider_error_context(backend=backend, base_url=base_url, role=role, model=model)
 
     if status_code in (401, 403):
         raise ProviderUnavailable(
             _provider_label(backend) + " provider unavailable: "
             + "провайдер отклонил запрос. Проверь ключи и доступы."
+            + ctx
         ) from exc
 
     if status_code == 429 or (isinstance(status_code, int) and status_code >= 500):
         raise ProviderUnavailable(
-            _provider_label(backend) + " provider unavailable: " + str(exc)
+            _provider_label(backend) + " provider unavailable: " + str(exc) + ctx
         ) from exc
 
     if name in {"APIConnectionError", "APITimeoutError", "Timeout", "ConnectError"}:
         raise ProviderUnavailable(
-            _provider_label(backend) + " provider unavailable: " + str(exc)
+            _provider_label(backend) + " provider unavailable: " + str(exc) + ctx
         ) from exc
 
     raise ProviderUnavailable(
-        _provider_label(backend) + " provider unavailable: " + str(exc)
+        _provider_label(backend) + " provider unavailable: " + str(exc) + ctx
     ) from exc
 
 
@@ -1653,6 +1718,50 @@ def _provider_label(backend: str) -> str:
         "codex_cli": "Codex CLI",
     }
     return labels.get(backend, backend)
+
+
+def _provider_error_context(backend: str, base_url: str, role: str, model: str) -> str:
+    """Small diagnostic suffix for HTTP 503 provider failures."""
+    host, port = _url_host_port(base_url)
+    parts = [
+        "backend=" + (backend or "unknown"),
+        "role=" + (role or "unknown"),
+        "model=" + (model or "unknown"),
+    ]
+    if base_url:
+        parts.append("base_url=" + base_url.rstrip("/"))
+    if host:
+        parts.append("host=" + host)
+        resolved = _resolve_host(host)
+        if resolved:
+            parts.append("resolved=" + resolved)
+    if port:
+        parts.append("port=" + str(port))
+    trace_id = _REQUEST_ID.get()
+    if trace_id:
+        parts.append("trace_id=" + trace_id)
+    parts.append("container=" + socket.gethostname())
+    parts.append("pid=" + str(os.getpid()))
+    return " [" + " ".join(parts) + "]"
+
+
+def _url_host_port(base_url: str) -> tuple[str, int | None]:
+    if not base_url:
+        return "", None
+    try:
+        parsed = url_parse.urlparse(base_url)
+    except Exception:
+        return "", None
+    return parsed.hostname or "", parsed.port
+
+
+def _resolve_host(host: str) -> str:
+    try:
+        infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except OSError as exc:
+        return "DNS_ERROR:" + exc.__class__.__name__ + ":" + str(exc)
+    ips = sorted({str(item[4][0]) for item in infos if item and item[4]})
+    return ",".join(ips[:3])
 
 
 def _build_client(role: str, backend: str) -> LLMClient:
@@ -1671,13 +1780,13 @@ def _build_client(role: str, backend: str) -> LLMClient:
         )
 
     if backend == "local_openai":
-        base_url = os.environ.get("LOCAL_LLM_BASE_URL", "http://local-llm-proxy:11434/v1")
+        base_url = os.environ.get("LOCAL_LLM_BASE_URL", "http://host.docker.internal:11434/v1")
         # Для локальных серверов ключ часто не нужен, но openai SDK требует
         # непустую строку. Подкладываем не-секретный плейсхолдер.
         api_key = os.environ.get("LOCAL_LLM_API_KEY", "not-needed") or "not-needed"
         if _use_native_ollama(base_url):
             return OllamaNativeClient(
-                model=model, base_url=base_url, backend="local_openai",
+                model=model, base_url=base_url, backend="local_openai", role=role,
             )
         return OpenAICompatibleClient(
             model=model, base_url=base_url, api_key=api_key, backend="local_openai",
@@ -1824,11 +1933,11 @@ def _build_direct_client(backend: str, model: str, role: str = "direct") -> LLMC
             )
         return OpenAICompatibleClient(model=model, base_url=base_url, api_key=api_key, backend="openrouter", role=role)
     if backend == "local_openai":
-        base_url = os.environ.get("LOCAL_LLM_BASE_URL", "http://local-llm-proxy:11434/v1")
+        base_url = os.environ.get("LOCAL_LLM_BASE_URL", "http://host.docker.internal:11434/v1")
         api_key = os.environ.get("LOCAL_LLM_API_KEY", "not-needed") or "not-needed"
         if _use_native_ollama(base_url):
-            return OllamaNativeClient(model=model, base_url=base_url, backend="local_openai")
-        return OpenAICompatibleClient(model=model, base_url=base_url, api_key=api_key, backend="local_openai")
+            return OllamaNativeClient(model=model, base_url=base_url, backend="local_openai", role=role)
+        return OpenAICompatibleClient(model=model, base_url=base_url, api_key=api_key, backend="local_openai", role=role)
     if backend == "anthropic_cli":
         return CLISubprocessClient(
             binary=os.environ.get("ANTHROPIC_CLI_PATH", "claude"),

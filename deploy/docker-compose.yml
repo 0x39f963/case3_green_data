@@ -109,15 +109,19 @@ services:
       LATENCY_SOFT_SEC: ${LATENCY_SOFT_SEC:-300}
       LATENCY_HARD_SEC: ${LATENCY_HARD_SEC:-600}
       LOCAL_LLM_USE_NATIVE_OLLAMA: ${LOCAL_LLM_USE_NATIVE_OLLAMA:-true}
-      # Inside Docker use service names on the single case3bot_default network.
-      LOCAL_LLM_BASE_URL: ${APP_LOCAL_LLM_BASE_URL:-http://local-llm-proxy:11434/v1}
+      # Canonical local LLM endpoint for this two-compose setup is the
+      # host-published Ollama port. Do not use local-llm-proxy from
+      # benchmark_api: it lives on a different Docker network.
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      OLLAMA_REQUEST_KEEP_ALIVE: ${OLLAMA_REQUEST_KEEP_ALIVE:-30s}
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30s}
       POSTGRES_DSN: postgresql://${POSTGRES_USER:-demo}:${POSTGRES_PASSWORD:-demo}@postgres:5432/${POSTGRES_DB:-demo_db}
       POSTGRES_AUDIT_DSN: postgresql://audit_ro:${POSTGRES_AUDIT_PASSWORD:-audit_ro_password}@postgres:5432/${POSTGRES_DB:-demo_db}
       # benchmark_pg is usually started from deploy/benchmark-compose.yml and
       # published on the host. Pass an explicit DSN so the app container never
       # falls back to its own 127.0.0.1 when reading benchmark.rag_embeddings.
       BENCHMARK_DSN: ${BENCHMARK_DSN:-postgresql://bench:bench@host.docker.internal:15434/bench}
-      BENCHMARK_API_URL: ${BENCHMARK_API_URL:-http://127.0.0.1:18081}
+      BENCHMARK_API_URL: ${BENCHMARK_API_URL:-http://127.0.0.1:18080}
       TABLE_KNOWLEDGE_V2_ENABLED: ${TABLE_KNOWLEDGE_V2_ENABLED:-true}
       RAG_BRIDGE_BLACKLIST_ROLES: ${RAG_BRIDGE_BLACKLIST_ROLES:-bridge_multiselect}
       AUDITOR_GROUPED_ENABLED: ${AUDITOR_GROUPED_ENABLED:-false}
@@ -148,8 +152,8 @@ services:
       # Локальный стенд берет уже установленные CLI с хоста, без npm pull при build.
       - ${HOME:-/root}/.local/share/claude-code/package/claude:/usr/local/bin/claude:ro
       - ${HOME:-/root}/.local/share/codex-cli/package/vendor/x86_64-unknown-linux-musl/codex/codex:/usr/local/bin/codex:ro
-    # `host.docker.internal` нужен на случай, если local-llm-proxy запущен
-    # на хосте, а не через профиль compose `local-llm`.
+    # `host.docker.internal` is the canonical route from app to the
+    # host-published local Ollama port in this deployment.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -220,12 +224,11 @@ services:
     profiles: ["local-llm"]
     restart: unless-stopped
     environment:
-      # Keep only one runner active and unload after requests by default.
-      # The app also sends per-request keep_alive, so qwen3.5:9b does not stay
-      # resident after smoke checks and block the next local model load.
+      # Keep one runner active and retain the model briefly between
+      # generator/auditor/prompt-check calls in one batch run.
       OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
       OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
-      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-0s}
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30s}
     gpus:
       - driver: nvidia
         count: all

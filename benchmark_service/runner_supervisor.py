@@ -312,6 +312,21 @@ def get_subprocess_status(benchmark_run_id: str) -> dict[str, Any]:
     }
 
 
+def read_runner_log(benchmark_run_id: str, tail: int = 200) -> dict[str, Any]:
+    safe_id = _safe_log_id(benchmark_run_id)
+    if not safe_id:
+        raise FileNotFoundError("empty benchmark_run_id")
+    path = LOG_DIR / (safe_id + ".log")
+    lines = _read_tail(path, max(1, min(int(tail or 200), 2000)))
+    return {
+        "benchmark_run_id": safe_id,
+        "log_path": str(path),
+        "exists": path.exists(),
+        "line_count": len(lines),
+        "tail": lines,
+    }
+
+
 def reap_finished() -> None:
     with _LOCK:
         items = list(_PROCS.items())
@@ -411,6 +426,19 @@ def _runner_env(token: str) -> dict[str, str]:
     env = os.environ.copy()
     env["BENCHMARK_INGEST_TOKEN"] = token
     return env
+
+
+def _safe_log_id(value: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_.-]+", "_", value.strip()).strip("._-")[:128]
+
+
+def _read_tail(path: Path, limit: int) -> list[str]:
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            lines = handle.readlines()
+    except OSError:
+        return []
+    return [line.rstrip("\n") for line in lines[-limit:]]
 
 
 def _dataset_path(dataset_id: str) -> str:
