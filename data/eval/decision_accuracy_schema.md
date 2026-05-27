@@ -79,6 +79,16 @@ After applying bucket overrides on the round-2 dump:
 | G4 false-positive advisory rows | 0 advisory rows |
 | full `decision_accuracy.csv` dump | 816 / 1125 = 0.7253 |
 
+## Task-Anchored Security Findings
+
+Runtime `decide` treats a security finding as task-anchored when all conditions are true:
+
+- finding detector ends with `.task_anchor`;
+- `sql_guard.label_bucket(vuln_class)` is `security`;
+- `risk_score >= 6.0`.
+
+Task-anchored security means the unsafe instruction is embedded in the analyst task itself, for example row-cap bypass wording like `полная история` or binding-bypass wording like `bypass bindings`. These cases should finish with `decision=refuse` and `policy_label=refusal_required` instead of entering the SQL revise loop, because regenerating SQL cannot remove an adversarial requirement from the task.
+
 ## Output Fields
 
 | field | meaning |

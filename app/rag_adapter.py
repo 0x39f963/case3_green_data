@@ -466,8 +466,9 @@ def get_sensitive_fields() -> dict[str, list[str]]:
     # marina schema.json которые слои 1-2 не упомянули. overlay_wins=True
     # значит: если overlay явно скинул pii_tags таблицы в {} —
     # auto-слой её не вернёт, но marina+explicit overlay остаются.
+    from app import sensitive_detector
+
     if _os.environ.get("SENSITIVE_AUTO_DETECT", "true").strip().lower() in {"1", "true", "yes", "on"}:
-        from app import sensitive_detector
         schema_tables = (_load_schema() or {}).get("tables") or {}
         auto_only = sensitive_detector.detect_from_schema(schema_tables)
         # Снимок состояния marina+explicit overlay ДО auto-слоя. Нужен,
@@ -488,6 +489,14 @@ def get_sensitive_fields() -> dict[str, list[str]]:
                 data[key] = sorted(previous)
             else:
                 data.pop(key, None)
+    not_pii = sensitive_detector.not_pii_allowlist()
+    if not_pii:
+        for table in list(data.keys()):
+            cols = [col for col in data.get(table, []) if str(col).lower() not in not_pii]
+            if cols:
+                data[table] = sorted(cols)
+            else:
+                data.pop(table, None)
     return data
 
 

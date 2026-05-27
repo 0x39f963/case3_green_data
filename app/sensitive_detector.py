@@ -20,9 +20,11 @@ introspection если задан DSN). Регексы рассчитаны на
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 
@@ -33,15 +35,19 @@ SENSITIVE_PATTERNS: dict[str, list[str]] = {
     "email": [r"\bemail\b", r"e[-_]?mail", r"\bmail_address\b"],
     "phone": [r"\bphone\b", r"^phone_\w+", r"\w+_phone$", r"\btelephone\b", r"\bmobile\b"],
     "inn": [r"\binn\b", r"_inn$", r"^inn_"],
-    "passport": [r"\bpassport\b", r"passport_\w+", r"^doc_pass"],
-    "credit": [r"\bcredit_\w+", r"_credit_\w+", r"^credit$"],
+    "passport": [r"\bpassport\b(?!_id\b)", r"passport_(?!id\b|\w*_id\b)\w+", r"^doc_pass"],
+    "credit": [r"\bcredit_(?!\w*_id\b)\w+", r"^credit$"],
     "name_personal": [
         r"\bsur_?name\b", r"\bfirst_?name\b", r"\bmiddle_?name\b",
         r"\bfio\b", r"\bpatronymic\b",
     ],
-    "birth": [r"\bbirth_\w+", r"^birthdate", r"^date_of_birth"],
-    "internal_security": [r"^sf_", r"\bsec_check_", r"_security_"],
-    "address": [r"\baddress\b", r"_address$", r"^addr_"],
+    "birth": [r"\bbirth_(?!id\b|\w*_id\b)\w+", r"^birthdate", r"^date_of_birth"],
+    "internal_security": [
+        r"^sf_(?!id\b|\w*_id\b)",
+        r"\bsec_check_(?!id\b|\w*_id\b)",
+        r"_security_(?!id\b|\w*_id\b)",
+    ],
+    "address": [r"\baddress\b(?!_id\b)", r"_address$", r"^addr_(?!id\b|\w*_id\b)"],
 }
 
 
@@ -65,14 +71,41 @@ def detect_sensitive_columns(column_names: list[str]) -> dict[str, str]:
     """
     matches: dict[str, str] = {}
     patterns = _compiled()
+    not_pii = _load_allowlist()
     for col in column_names:
         if not col:
+            continue
+        if col.lower() in not_pii:
             continue
         for category, regex in patterns:
             if regex.search(col):
                 matches[col] = category
                 break
     return matches
+
+
+@lru_cache(maxsize=1)
+def _load_allowlist() -> set[str]:
+    """Load explicit non-PII column names for regex and overlay false positives."""
+    path = (
+        Path(__file__).resolve().parent.parent
+        / "data"
+        / "eval"
+        / "sensitive_fields_allowlist.json"
+    )
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    cols = data.get("explicit_not_pii", [])
+    if not isinstance(cols, list):
+        return set()
+    return {str(col).strip().lower() for col in cols if str(col).strip()}
+
+
+def not_pii_allowlist() -> set[str]:
+    """Return explicit non-PII columns for callers that merge several sources."""
+    return set(_load_allowlist())
 
 
 def detect_from_schema(schema_tables: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
@@ -193,4 +226,5 @@ __all__ = [
     "detect_from_schema",
     "merge_with_overlay",
     "diff_overlay_vs_auto",
+    "not_pii_allowlist",
 ]

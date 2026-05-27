@@ -1,0 +1,18 @@
+{
+  "explicit_not_pii": [
+    "credit_logic_id",
+    "credit_contract_id",
+    "credit_terms",
+    "credit_analyst_id",
+    "credit_group_id",
+    "credit_purpose_id",
+    "debit_credit_id",
+    "passport_type_id",
+    "address_type_id",
+    "birth_place_id",
+    "scp_tech_ctredit",
+    "scp_business_segment",
+    "sf_id",
+    "sec_check_id"
+  ]
+}

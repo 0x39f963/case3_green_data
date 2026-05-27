@@ -813,6 +813,14 @@ def _node_decide(state: PipelineState) -> PipelineState:
     has_uncertain_internal = bool(internal_labels & {"AUDIT_UNCERTAIN"})
     repeat_stop_reason = _repeat_stop_reason(state, audit)
     max_iter_unresolved = iteration >= max_iter and not approved
+    task_anchored_security_findings = [
+        v
+        for v in vulns
+        if str(getattr(v, "detector", "")).endswith(".task_anchor")
+        and sql_guard.label_bucket(str(getattr(v, "vuln_class", ""))) == "security"
+        and float(getattr(v, "risk_score", 0.0) or 0.0) >= 6.0
+    ]
+    task_anchored_security = bool(task_anchored_security_findings)
 
     if sentinel_kind:
         decision = "refuse" if sentinel_kind in {_POLICY_REFUSAL_REQUIRED, _POLICY_PROMPT_BLOCKED} else "abstain"
@@ -837,6 +845,11 @@ def _node_decide(state: PipelineState) -> PipelineState:
         needs_human = False
         human_reason = "ранний AST-барьер: " + ", ".join(state.get("early_barrier_labels", []))
         policy_label = _POLICY_HARD_FAIL
+    elif task_anchored_security:
+        decision = "refuse"
+        needs_human = False
+        human_reason = "security attack embedded in task; revise cannot fix"
+        policy_label = _POLICY_REFUSAL_REQUIRED
     elif quality_only_block and not low_judge:
         decision = "approve"
         approved = True
@@ -880,6 +893,7 @@ def _node_decide(state: PipelineState) -> PipelineState:
             "early_barrier": early_barrier,
             "low_judge": low_judge,
             "has_uncertain_internal": has_uncertain_internal,
+            "task_anchored_security": task_anchored_security,
             "repeat_stop_reason": repeat_stop_reason,
             "internal_labels": sorted(internal_labels),
             "iteration": iteration,
@@ -889,6 +903,15 @@ def _node_decide(state: PipelineState) -> PipelineState:
         event["outputs"]["decision"] = decision
         event["outputs"]["needs_human"] = needs_human
         event["outputs"]["human_reason"] = human_reason
+        event["details"]["task_anchored_security_findings"] = [
+            {
+                "vuln_class": str(getattr(v, "vuln_class", "")),
+                "risk_score": float(getattr(v, "risk_score", 0.0) or 0.0),
+                "detector": str(getattr(v, "detector", "")),
+                "evidence_span": str(getattr(v, "evidence_span", "")),
+            }
+            for v in task_anchored_security_findings
+        ]
 
     return {
         **state,
