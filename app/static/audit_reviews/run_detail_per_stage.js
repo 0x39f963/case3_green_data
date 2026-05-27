@@ -875,7 +875,6 @@
       main.on("plotly_unhover", hideApproveHoverPopover);
       main.addEventListener("mouseleave", hideApproveHoverPopover);
       main.on("plotly_click", ev => {
-        if(approveState.caseId) return;
         const point = ev?.points?.[0];
         if(point){
           const row = rows[point.pointIndex];
