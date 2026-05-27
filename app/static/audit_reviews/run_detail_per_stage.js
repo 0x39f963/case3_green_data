@@ -11,7 +11,7 @@
   let uiConfig = null;
   let goldenClassesPromise = null;
   let approveCasesPromise = null;
-  const approveMainChartHeight = 430;
+  const approveMainChartHeight = 530;
   const approveState = {
     rows: [],
     classes: [],
@@ -478,12 +478,40 @@
     [12, 50, "pii_overfetch", "Овер-фетч PII"]
   ];
   const bucketMeta = {
-    correct: {label: "approved as expected", short: "approved", color: "#16a34a", tone: "ok", note: "Safe case was approved by the pipeline."},
-    adv_refuse: {label: "correctly blocked risky request", short: "correct block", color: "#eab308", tone: "warn", note: "Risky or out-of-policy case was not approved."},
-    security_underblock: {label: "security miss: risky request approved", short: "security miss", color: "#dc2626", tone: "bad", note: "A risky request was approved and needs review."},
-    quality_underblock: {label: "quality miss: broad SQL approved", short: "quality miss", color: "#f97316", tone: "warn", note: "The request was approved, but its labels point to scope, pagination, cost, or SELECT * risk."},
-    overblock: {label: "false reject: safe request not approved", short: "false reject", color: "#64748b", tone: "muted", note: "A positive dataset case was blocked or left undecided."},
-    loop_fail: {label: "stopped by repeat or iteration limit", short: "repeat / max iter", color: "#7c3aed", tone: "loop", note: "The runner stopped after repeated SQL or too many iterations."}
+    correct: {label: "approved as expected", short: "approved", color: "#16a34a", tone: "ok", result: "Верно", note: "Positive-кейс должен был пройти, и pipeline его одобрил."},
+    adv_refuse: {label: "correctly blocked risky request", short: "correct block", color: "#eab308", tone: "warn", result: "Верно", note: "Рискованный или adversarial-кейс должен был быть заблокирован, и pipeline не отдал approve."},
+    security_underblock: {label: "security miss: risky request approved", short: "security miss", color: "#dc2626", tone: "bad", result: "Ошибка", note: "Рискованный запрос был одобрен. Это underblock: система пропустила кейс, который должна была остановить."},
+    quality_underblock: {label: "quality miss: broad SQL approved", short: "quality miss", color: "#f97316", tone: "warn", result: "Ошибка качества", note: "Запрос был одобрен, хотя risk labels указывают на широкий scope, отсутствие LIMIT, стоимость или SELECT *."},
+    overblock: {label: "false reject: safe request not approved", short: "false reject", color: "#64748b", tone: "muted", result: "Ошибка", note: "Безопасный positive-кейс должен был быть одобрен, но pipeline отказал или abstain."},
+    loop_fail: {label: "stopped by repeat or iteration limit", short: "repeat / max iter", color: "#7c3aed", tone: "loop", result: "Технический стоп", note: "Runner остановился из-за повтора SQL или лимита итераций. Это не бизнес-вердикт, а сигнал о проблеме retry loop."}
+  };
+  const riskLabelMeta = {
+    DIRECT_SENSITIVE: {title: "Чувствительные данные", text: "SQL напрямую выводит персональные или служебные поля. Такие данные нужно агрегировать, маскировать или исключать."},
+    MASKING_REQUIRED: {title: "Нужно маскирование", text: "Данные можно использовать, но показывать их нужно в защищенном виде: скрыть часть значения или заменить безопасным признаком."},
+    WRONG_JOIN_PATH: {title: "Неверный JOIN", text: "Путь соединения таблиц не подтвержден схемой или бизнес-правилами. Цифры могут выглядеть правдоподобно, но отвечать не на тот вопрос."},
+    BROKEN_SQL: {title: "SQL не выполняется", text: "Запрос технически сломан: синтаксис, алиасы, поля или совместимость с базой требуют исправления."},
+    SYNTAX_BROKEN: {title: "Ошибка синтаксиса", text: "База не сможет разобрать SQL. Нужно проверить кавычки, алиасы, GROUP BY, LIMIT/OFFSET и параметры."},
+    MISSING_REQUIRED_FILTER: {title: "Потерян фильтр", text: "Из задачи пропал важный ограничитель: период, клиент, tenant, статус или другой критерий. Ответ может стать слишком широким."},
+    BUSINESS_MISMATCH: {title: "Не тот бизнес-смысл", text: "SQL формально похож на ответ, но не сохраняет смысл пользовательского запроса или обязательные условия."},
+    HALLUCINATED_TABLE: {title: "Несуществующая таблица", text: "Модель сослалась на таблицу, которой нет в подтвержденной схеме."},
+    HALLUCINATED_COLUMN: {title: "Несуществующее поле", text: "Модель сослалась на колонку, которой нет в подтвержденной схеме или выбранной таблице."},
+    INVALID_COLUMN: {title: "Поле не той таблицы", text: "Колонка существует в схеме, но выбрана не из той таблицы или алиаса."},
+    EXCESSIVE_SCOPE: {title: "Слишком широкий охват", text: "Запрос берет больше объектов, строк, колонок или периодов, чем требовалось. Нужен более точный срез."},
+    SELECT_STAR: {title: "SELECT *", text: "Запрос забирает все поля вместо явного списка. В выдачу могут попасть лишние технические или чувствительные данные."},
+    NO_PAGINATION: {title: "Нет ограничения объема", text: "Запрос может вернуть слишком много строк без LIMIT, периода или другого ограничителя."},
+    NO_LIMIT: {title: "Нет LIMIT", text: "Запрос не ограничивает объем результата. Это повышает нагрузку и усложняет проверку."},
+    COST_DOS: {title: "Дорогой запрос", text: "SQL может создать чрезмерную нагрузку на базу: тяжелые JOIN, широкие выборки, отсутствие ограничителей."},
+    CROSS_JOIN_EXPLOSION: {title: "Взрыв строк", text: "CROSS JOIN или декартово произведение может резко умножить число строк и стоимость запроса."},
+    NON_SARGABLE_FILTER: {title: "Медленный фильтр", text: "Фильтр мешает использовать индекс, например функция применяется к колонке в WHERE."},
+    SQL_INJ_CLASSIC: {title: "SQL injection", text: "Запрос содержит паттерн SQL-инъекции или попытку обойти условия фильтрации."},
+    SQL_INJ_UNION: {title: "UNION injection", text: "Через UNION можно попытаться достать данные из другой области схемы."},
+    SQL_INJ_TIME: {title: "Time-based injection", text: "Запрос содержит задержку или паттерн blind-инъекции."},
+    TAUTOLOGY: {title: "Всегда истинное условие", text: "Условие вроде OR 1=1 может снять фильтры и вернуть лишние строки."},
+    DML_NO_WHERE: {title: "UPDATE/DELETE без WHERE", text: "Мутация без ограничителя может изменить или удалить слишком много данных."},
+    DDL_FORBIDDEN: {title: "DDL запрещен", text: "Запрос пытается менять структуру базы. Для аналитического режима это запрещено."},
+    COPY_EXPORT: {title: "Экспорт данных", text: "SQL пытается выгрузить данные наружу. Такой сценарий требует отдельного разрешения."},
+    PROMPT_INJECTION: {title: "Prompt injection", text: "Задача пытается переопределить инструкции системы или заставить ее нарушить правила."},
+    SCHEMA_LEAK: {title: "Утечка схемы", text: "Запрос обращается к служебным каталогам вроде information_schema или pg_catalog вместо разрешенного schema context."}
   };
   const qualityLabels = new Set(["EXCESSIVE_SCOPE", "NO_PAGINATION", "COST_DOS", "SELECT_STAR"]);
 
@@ -627,6 +655,58 @@
     return fmt(n, " s");
   }
 
+  function maxIterations(row){
+    return Number(row.max_iterations || row.max_iterations_used || 10) || 10;
+  }
+
+  function riskInfo(label){
+    const key = String(label || "").toUpperCase();
+    return riskLabelMeta[key] || {title: key || "Risk label", text: "Техническая метка риска из golden dataset. Для нее пока нет отдельного бизнес-описания в UI."};
+  }
+
+  function sqlSkeletonParts(sql){
+    const text = String(sql || "");
+    const upper = text.toUpperCase();
+    const parts = [
+      ["SELECT", /\bSELECT\b/],
+      ["FROM", /\bFROM\b/],
+      ["JOIN", /\bJOIN\b/],
+      ["WHERE", /\bWHERE\b/],
+      ["GROUP", /\bGROUP\s+BY\b/],
+      ["ORDER", /\bORDER\s+BY\b/],
+      ["LIMIT", /\bLIMIT\b/]
+    ];
+    return parts.map(([name, re]) => ({name, on: re.test(upper)}));
+  }
+
+  function sqlTables(sql){
+    const text = String(sql || "");
+    const tables = [];
+    text.replace(/\b(?:FROM|JOIN)\s+([a-zA-Z_][\w."]*)/gi, (_match, name) => {
+      const clean = String(name || "").replace(/"/g, "");
+      if(clean && !tables.includes(clean) && clean !== "SELECT") tables.push(clean);
+      return _match;
+    });
+    return tables.slice(0, 6);
+  }
+
+  function renderSqlSkeleton(sql){
+    const raw = String(sql || "").trim();
+    if(!raw) return `<div class="approve-sql-skeleton is-empty">SQL skeleton: финальный SQL не сохранен.</div>`;
+    const parts = sqlSkeletonParts(raw);
+    const tables = sqlTables(raw);
+    return `
+      <div class="approve-sql-skeleton">
+        <div class="approve-skeleton-title">SQL skeleton</div>
+        <div class="approve-skeleton-flow">
+          ${parts.map(part => `<span class="${part.on ? "is-on" : ""}">${esc(part.name)}</span>`).join("")}
+        </div>
+        <div class="approve-skeleton-tables">
+          ${tables.length ? tables.map(item => `<code>${esc(item)}</code>`).join("") : `<span>tables not detected</span>`}
+        </div>
+      </div>`;
+  }
+
   function mergeApproveRows(cases, golden){
     return cases.items.map((item, orderIndex) => {
       const seq = caseSeq(item.case_id);
@@ -735,7 +815,16 @@
       <div class="approve-filter-line approve-filter-line--buckets">
         ${bucketLabels.map(([key, item]) => `<label><input type="checkbox" data-approve-bucket="${key}" ${approveState.buckets[key] ? "checked" : ""}> <span class="legend-dot" style="background:${item.color}"></span>${esc(bucketLabel(key, "short"))}</label>`).join("")}
         <input id="approveSearch" class="field-input approve-search" value="${esc(approveState.search)}" placeholder="case_id / task search">
+      </div>
+      <div class="approve-status-guide" id="approveStatusGuide">
+        ${bucketLabels.map(([key, item]) => `<button type="button" data-bucket-help="${esc(key)}"><span class="legend-dot" style="background:${item.color}"></span><b>${esc(bucketLabel(key, "short"))}</b></button>`).join("")}
+        <div class="approve-status-help" id="approveStatusHelp">${renderBucketHelp("correct")}</div>
       </div>`;
+  }
+
+  function renderBucketHelp(key){
+    const item = bucketMeta[key] || bucketMeta.correct;
+    return `<b>${esc(item.result || bucketLabel(key, "short"))}: ${esc(item.label)}</b><span>${esc(item.note || "")}</span>`;
   }
 
   function filteredApproveRows(){
@@ -954,9 +1043,22 @@
     return items.map(label => `<span class="approve-risk-chip">${esc(label)}</span>`).join("");
   }
 
+  function renderRiskDetails(labels){
+    const items = labels && labels.length ? labels : [];
+    if(!items.length) return `<div class="approve-risk-detail is-empty">Risk labels отсутствуют: для этого кейса нет отдельных меток риска.</div>`;
+    return `<div class="approve-risk-detail-list">${items.map(label => {
+      const info = riskInfo(label);
+      return `<article class="approve-risk-detail">
+        <div><code>${esc(label)}</code><b>${esc(info.title)}</b></div>
+        <p>${esc(info.text)}</p>
+      </article>`;
+    }).join("")}</div>`;
+  }
+
   function renderApproveHoverContent(row, pinned){
     const meta = bucketMeta[row.bucket] || bucketMeta.overblock;
     const note = row.loop_flag ? bucketMeta.loop_fail.note : meta.note;
+    const iterText = `${row.iterations_used || 0} / ${maxIterations(row)}`;
     return `
       <div class="approve-popover-head">
         <div>
@@ -968,6 +1070,7 @@
           ${pinned ? `<button type="button" class="approve-popover-clear" data-approve-unpin>Unpin</button>` : ""}
         </div>
       </div>
+      <p class="approve-popover-note approve-popover-note--${esc(meta.tone)}">${esc(note)}</p>
       <div class="approve-popover-row">
         <span>Class</span>
         <b>${esc(row.class_id)} · ${esc(row.class_name)}</b>
@@ -980,26 +1083,28 @@
         <span>Actual</span>
         <b>${esc(actualText(row))}</b>
       </div>
-      <div class="approve-risk-list">${renderRiskChips(row.risk_labels)}</div>
-      <p class="approve-popover-note">${esc(note)}</p>
-      <div class="approve-popover-text">
-        <span>Task</span>
-        <p>${esc(shortText(row.task_text || "", 260))}</p>
-      </div>
-      <div class="approve-popover-text">
-        <span>Final SQL</span>
-        <p class="mono">${esc(shortText(row.final_sql_text || "", 220) || "n/a")}</p>
-      </div>
       <div class="approve-popover-usage">
-        <span><b>${esc(row.iterations_used || 0)}</b> iterations</span>
+        <span><b>${esc(iterText)}</b> iterations</span>
         <span><b>${esc(fmtDuration(row.duration_sec || 0))}</b> duration</span>
         <span><b>${esc(fmtInt(row.total_tokens || 0))}</b> tokens</span>
         <span><b>${esc(money(row.cost_usd || 0))}</b> cost</span>
+        <span><b>${esc(shortText(row.human_reason || "n/a", 42))}</b> human reason</span>
+      </div>
+      <div class="approve-risk-list">${renderRiskChips(row.risk_labels)}</div>
+      ${renderRiskDetails(row.risk_labels)}
+      <div class="approve-popover-text">
+        <span>Task</span>
+        <p>${esc(shortText(row.task_text || "", 340))}</p>
+      </div>
+      <div class="approve-popover-text">
+        <span>Final SQL</span>
+        <p class="mono">${esc(shortText(row.final_sql_text || "", 280) || "n/a")}</p>
       </div>
       <div class="approve-popover-text">
         <span>Human reason</span>
         <p>${esc(shortText(row.human_reason || "n/a", 240))}</p>
-      </div>`;
+      </div>
+      ${renderSqlSkeleton(row.final_sql_text || "")}`;
   }
 
   function showApproveHoverPopover(row, point, pinned){
@@ -1139,6 +1244,16 @@
         approveState.buckets[input.dataset.approveBucket] = input.checked;
         renderApproveDrawerContent();
       });
+    });
+    drawer.querySelectorAll("[data-bucket-help]").forEach(btn => {
+      const show = () => {
+        const help = document.getElementById("approveStatusHelp");
+        if(help) help.innerHTML = renderBucketHelp(btn.dataset.bucketHelp);
+        drawer.querySelectorAll("[data-bucket-help]").forEach(item => item.classList.toggle("is-active", item === btn));
+      };
+      btn.addEventListener("mouseenter", show);
+      btn.addEventListener("focus", show);
+      btn.addEventListener("click", show);
     });
     drawer.querySelectorAll("[data-class-id]").forEach(btn => {
       btn.addEventListener("click", () => {
