@@ -65,6 +65,9 @@ def check_data_exposure(sql: str, ctx: dict[str, Any] | None = None) -> list[dic
 def check_reliability(sql: str, ctx: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Проверить reliability labels."""
     labels = (
+        "HARDCODED_BINDING",
+        "LIMIT_BYPASS",
+        "BINDINGS_BYPASS",
         "NO_PAGINATION",
         "CROSS_JOIN_EXPLOSION",
         "COST_DOS",

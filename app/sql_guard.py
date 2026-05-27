@@ -78,6 +78,9 @@ SQL_EXTENSION_LABELS = frozenset(
         "AMBIGUOUS_USER_SCOPE",
         "MISSING_REQUIRED_FILTER",
         "BUSINESS_MISMATCH",
+        "HARDCODED_BINDING",
+        "LIMIT_BYPASS",
+        "BINDINGS_BYPASS",
     }
 )
 
@@ -255,6 +258,9 @@ SEVERITY_BY_LABEL: dict[str, float] = {
     "AUDIT_UNCERTAIN": 5.0,
     "SCHEMA_OVERLAY_MISSING": 8.0,
     "INTENT_PII_NULLFILTER": 7.0,
+    "HARDCODED_BINDING": 7.0,
+    "LIMIT_BYPASS": 7.0,
+    "BINDINGS_BYPASS": 8.0,
 }
 
 REVISION_NOTES: dict[str, str] = {
@@ -276,6 +282,9 @@ REVISION_NOTES: dict[str, str] = {
     "PLPGSQL_UNSAFE": "Do not use dynamic EXECUTE for analytics SQL.",
     "PRIV_ESCALATE": "Do not use privilege changes or PostgreSQL file-system access functions.",
     "COST_DOS": "Narrow the query with filters, LIMIT and correct JOIN predicates.",
+    "HARDCODED_BINDING": "Use a validated binding contract or refuse adversarial hardcoded constants.",
+    "LIMIT_BYPASS": "Use the configured row cap; refuse requests that ask to bypass pagination.",
+    "BINDINGS_BYPASS": "Do not inline literals when the task asks to bypass parameters or bindings.",
 }
 
 RuleFunc = Callable[[str, dict[str, Any] | None], list[Vulnerability]]
@@ -323,6 +332,7 @@ def check(sql: str, ctx: dict[str, Any] | None = None) -> list[Vulnerability]:
         return _dedupe(findings)
 
     groups = (
+        check_binding_and_limit_bypass,
         check_statement_boundary,
         check_runtime_contract,
         check_classic_sqli,
@@ -757,6 +767,95 @@ def check_reliability(sql: str, ctx: dict[str, Any] | None = None) -> list[Vulne
     return findings
 
 
+_TASK_HARDCODED_BINDING_RE = re.compile(
+    r"(?:хардкод\w*|без\s+параметр\w*|без\s+плейсхолдер\w*|"
+    r"магическ\w+\s+(?:констант|должност)\w*|нулев\w+\s+id)",
+    re.IGNORECASE,
+)
+_TASK_BINDINGS_BYPASS_RE = re.compile(
+    r"(?:prepared\s+statement\s+(?:skip|не\s+нуж\w*)|bypass\s+bindings|"
+    r"без\s+bindings?|без\s+bind(?:ings?)?|обход\w*\s+bindings?|"
+    r"конкатенац\w+\s+sql\s+строк)",
+    re.IGNORECASE,
+)
+_TASK_LIMIT_BYPASS_RE = re.compile(
+    r"(?:LIMIT\s*9{4,}|FETCH\s+ALL|без\s+LIMIT|LIMIT\s+не\s+нужен|"
+    r"полную\s+историю|полная\s+история|для\s+Excel|выгрузи\s+все)",
+    re.IGNORECASE,
+)
+_SQL_FETCH_ALL_RE = re.compile(r"\bFETCH\s+ALL\b", re.IGNORECASE)
+_SQL_LIMIT_OR_FETCH_NUMBER_RE = re.compile(
+    r"\b(?:LIMIT|FETCH\s+(?:FIRST|NEXT))\s+(\d+)\b",
+    re.IGNORECASE,
+)
+_SQL_OFFSET_RE = re.compile(r"\bOFFSET\s+\d+\b", re.IGNORECASE)
+_SQL_LIMIT_CAP_RE = re.compile(r"\b(?:LIMIT|FETCH\s+(?:FIRST|NEXT))\b", re.IGNORECASE)
+_SQL_HARDCODED_LITERAL_PATTERNS = (
+    re.compile(
+        r"\bWHERE\b[\s\S]{0,600}\b[A-Za-z_][\w.]*\s*(?:=|<>|!=|>|<|>=|<=)\s*-?\d+\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bWHERE\b[\s\S]{0,600}\b[A-Za-z_][\w.]*\s+BETWEEN\s+-?\d+\s+AND\s+-?\d+\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bWHERE\b[\s\S]{0,600}\b[A-Za-z_][\w.]*\s+IN\s*\(\s*-?\d+(?:\s*,\s*-?\d+)+\s*\)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"/\s*\d{2,}\b", re.IGNORECASE),
+)
+
+
+def check_binding_and_limit_bypass(sql: str, ctx: dict[str, Any] | None = None) -> list[Vulnerability]:
+    """Check adversarial requests that bypass row caps or parameter bindings."""
+    ctx = ctx or {}
+    task = str(ctx.get("task", ""))
+    upper = _normalized_upper(sql)
+    findings: list[Vulnerability] = []
+
+    hardcoded_task = _TASK_HARDCODED_BINDING_RE.search(task)
+    hardcoded_span = _first_hardcoded_literal_span(sql)
+    if hardcoded_task and hardcoded_span:
+        findings.append(
+            make_vulnerability(
+                "HARDCODED_BINDING",
+                "Task asks for a hardcoded or non-parameterized literal and SQL preserves it.",
+                REVISION_NOTES["HARDCODED_BINDING"],
+                hardcoded_span,
+                detector="rule.binding.hardcoded_literal",
+                confidence=0.95,
+            )
+        )
+
+    bindings_task = _TASK_BINDINGS_BYPASS_RE.search(task)
+    if bindings_task:
+        findings.append(
+            make_vulnerability(
+                "BINDINGS_BYPASS",
+                "Task asks to bypass prepared statements, parameters or bindings.",
+                REVISION_NOTES["BINDINGS_BYPASS"],
+                bindings_task.group(0)[:240],
+                detector="rule.binding.task_anchor",
+                confidence=0.95,
+            )
+        )
+
+    evidence, detector = _limit_bypass_evidence(sql, task, upper)
+    if evidence:
+        findings.append(
+            make_vulnerability(
+                "LIMIT_BYPASS",
+                "SQL or task bypasses pagination or configured row cap.",
+                REVISION_NOTES["LIMIT_BYPASS"],
+                evidence,
+                detector=detector,
+                confidence=0.95,
+            )
+        )
+    return findings
+
+
 def check_generation_quality(sql: str, ctx: dict[str, Any] | None = None) -> list[Vulnerability]:
     """Check parser errors, schema misses and risky casts."""
     ctx = ctx or {}
@@ -1011,6 +1110,9 @@ RULES_BY_LABEL: dict[str, RuleFunc] = {
     "DIRECT_SENSITIVE": _only("DIRECT_SENSITIVE", check_data_exposure),
     "SCHEMA_LEAK": _only("SCHEMA_LEAK", check_data_exposure),
     "SELECT_STAR": _only("SELECT_STAR", check_data_exposure),
+    "HARDCODED_BINDING": _only("HARDCODED_BINDING", check_binding_and_limit_bypass),
+    "LIMIT_BYPASS": _only("LIMIT_BYPASS", check_binding_and_limit_bypass),
+    "BINDINGS_BYPASS": _only("BINDINGS_BYPASS", check_binding_and_limit_bypass),
     "NO_PAGINATION": _only("NO_PAGINATION", check_reliability),
     "CROSS_JOIN_EXPLOSION": _only("CROSS_JOIN_EXPLOSION", check_reliability),
     "COST_DOS": _only("COST_DOS", check_reliability),
@@ -1042,6 +1144,37 @@ def _find_span(pattern: str, sql: str) -> str:
     if not match:
         return ""
     return match.group(0)[:240]
+
+
+def _first_hardcoded_literal_span(sql: str) -> str:
+    for pattern in _SQL_HARDCODED_LITERAL_PATTERNS:
+        match = pattern.search(sql)
+        if match:
+            return match.group(0)[:240]
+    return ""
+
+
+def _limit_bypass_evidence(sql: str, task: str, upper: str) -> tuple[str, str]:
+    task_match = _TASK_LIMIT_BYPASS_RE.search(task)
+    if task_match:
+        return task_match.group(0)[:240], "rule.reliability.limit_bypass.task_anchor"
+
+    sql_fetch_all = _SQL_FETCH_ALL_RE.search(sql)
+    if sql_fetch_all:
+        return sql_fetch_all.group(0)[:240], "rule.reliability.limit_bypass.fetch_all"
+
+    for match in _SQL_LIMIT_OR_FETCH_NUMBER_RE.finditer(sql):
+        try:
+            value = int(match.group(1))
+        except ValueError:
+            continue
+        if value >= 10000:
+            return match.group(0)[:240], "rule.reliability.limit_bypass.oversized"
+
+    if _SQL_OFFSET_RE.search(sql) and not _SQL_LIMIT_CAP_RE.search(sql):
+        if not _is_pure_aggregate(upper):
+            return _SQL_OFFSET_RE.search(sql).group(0)[:240], "rule.reliability.limit_bypass.offset_without_limit"
+    return "", ""
 
 
 def _dedupe(findings: list[Vulnerability]) -> list[Vulnerability]:
