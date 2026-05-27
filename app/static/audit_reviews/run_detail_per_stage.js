@@ -864,7 +864,7 @@
         }
       });
       main.on("plotly_unhover", hideApproveHoverPopover);
-      main.addEventListener("mouseleave", hideApproveHoverPopover);
+      main.addEventListener("mouseleave", () => hideApproveHoverPopover());
       main.on("plotly_click", ev => {
         const point = ev?.points?.[0];
         if(point){
@@ -1031,15 +1031,18 @@
       const gap = 18;
       const maxLeft = Math.max(12, wrap.clientWidth - pop.offsetWidth - 12);
       const maxTop = Math.max(12, approveMainChartHeight - pop.offsetHeight - 12);
-      const sideLeft = leftBase > chartWidth * 0.58;
-      const nextLeft = sideLeft ? leftBase - pop.offsetWidth - gap : leftBase + gap;
+      const pointOnRight = leftBase > chartWidth * 0.5;
+      const nextLeft = pinned
+        ? (pointOnRight ? 12 : maxLeft)
+        : (pointOnRight ? leftBase - pop.offsetWidth - gap : leftBase + gap);
       const nextTop = topBase - Math.min(74, pop.offsetHeight / 3);
       pop.style.transform = `translate(${Math.min(Math.max(12, nextLeft), maxLeft)}px, ${Math.min(Math.max(12, nextTop), maxTop)}px)`;
     });
   }
 
   function hideApproveHoverPopover(force){
-    if(approveState.caseId && !force) return;
+    const forced = force === true;
+    if(approveState.caseId && !forced) return;
     const pop = document.getElementById("approveHoverPopover");
     if(pop){
       pop.hidden = true;
