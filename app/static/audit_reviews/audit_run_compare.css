@@ -30,6 +30,8 @@
 .kpi-card-clickable{cursor:pointer}
 .kpi-card-clickable:hover{border-color:#b8c8e8;box-shadow:0 12px 28px rgba(37,99,235,.10);transform:translateY(-1px)}
 .kpi-card-clickable:focus-visible{outline:3px solid rgba(37,99,235,.22);outline-offset:2px}
+.kpi-card-decision_accuracy{border-color:#93c5fd;background:#eff6ff;box-shadow:0 10px 26px rgba(37,99,235,.12)}
+.kpi-card-decision_accuracy .kpi-card__label{color:#1d4ed8}
 .metric-icon{width:44px;height:44px;min-width:44px;border-radius:999px;display:grid;place-items:center}
 .metric-icon svg{width:23px;height:23px}
 .metric-icon-green{background:#dcfce7;color:#16a34a}

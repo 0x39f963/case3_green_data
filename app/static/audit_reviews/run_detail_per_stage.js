@@ -35,6 +35,22 @@
   const pct = (v) => Number.isFinite(Number(v)) ? (Number(v) * 100).toFixed(2) + "%" : "N/A";
 
   const metricCatalog = {
+    decision_accuracy: {
+      label: "Decision Accuracy",
+      icon: "shield",
+      tone: "blue",
+      summary: "Доля корректных решений с учетом positive, security и quality-advisory кейсов. Refuse на adversarial кейсе считается успехом, а quality-only approve считается корректным advisory.",
+      formula: "correct approve / approve_with_advisory / refuse decisions / all processed cases",
+      seriesKey: null
+    },
+    approve_with_advisory_rate: {
+      label: "Approve + Advisory",
+      icon: "clipboard",
+      tone: "blue",
+      summary: "Доля quality-only кейсов, где pipeline дал approve или явно поставил policy_label approve_with_advisory.",
+      formula: "approve_with_advisory cases / all processed cases",
+      seriesKey: null
+    },
     approve_rate: {
       label: "Approve Rate",
       icon: "shield",
@@ -159,7 +175,7 @@
   function tile(metricKey, value, hint){
     const meta = metricCatalog[metricKey] || {label: metricKey, icon:"rows", tone:"blue"};
     const clickable = ["approve_rate", "first_try_success_rate", "ea_pass_rate"].includes(metricKey);
-    return `<button class="kpi-card${clickable ? " kpi-card-clickable" : ""}" type="button" data-metric="${esc(metricKey)}"${clickable ? "" : " tabindex=\"-1\""}>
+    return `<button class="kpi-card kpi-card-${esc(metricKey)}${clickable ? " kpi-card-clickable" : ""}" type="button" data-metric="${esc(metricKey)}"${clickable ? "" : " tabindex=\"-1\""}>
       <span class="metric-icon metric-icon-${esc(meta.tone || "blue")}">${iconSvg(meta.icon)}</span>
       <span class="kpi-card__text"><span class="kpi-card__label">${esc(meta.label)}</span><b>${esc(value)}</b><span class="kpi-card__hint">${esc(hint || "")}</span></span>
     </button>`;
@@ -358,8 +374,16 @@
     const eaTotal = Number(m.ea_total_cases || m.total || 0);
     const eaValue = eaEvaluated ? pct(m.ea_pass_rate) : "N/A";
     const eaHint = eaEvaluated ? `${eaEvaluated}/${eaTotal} ${m.ea_status || ""}`.trim() : "not evaluated";
+    const decisionHint = Number.isFinite(Number(m.correct_decisions)) && Number.isFinite(Number(m.total))
+      ? `${Number(m.correct_decisions)}/${Number(m.total)} correct`
+      : "";
+    const advisoryHint = Number.isFinite(Number(m.approve_with_advisory_count)) && Number.isFinite(Number(m.total))
+      ? `${Number(m.approve_with_advisory_count)}/${Number(m.total)} cases`
+      : "";
 
     document.getElementById("kpiGrid").innerHTML = [
+      tile("decision_accuracy", pct(m.decision_accuracy), decisionHint),
+      tile("approve_with_advisory_rate", pct(m.approve_with_advisory_rate), advisoryHint),
       tile("approve_rate", pct(m.approve_rate)),
       tile("first_try_success_rate", pct(m.first_try_success_rate)),
       tile("ea_pass_rate", eaValue, eaHint),
