@@ -477,12 +477,12 @@
     [12, 50, "pii_overfetch", "Овер-фетч PII"]
   ];
   const bucketMeta = {
-    correct: {label: "approved", color: "#16a34a"},
-    adv_refuse: {label: "adv. correctly refused", color: "#eab308"},
-    security_underblock: {label: "security underblock", color: "#dc2626"},
-    quality_underblock: {label: "quality underblock", color: "#f97316"},
-    overblock: {label: "overblock false-refuse", color: "#64748b"},
-    loop_fail: {label: "repeat_stop/max_iter", color: "#7c3aed"}
+    correct: {label: "approved as expected", short: "approved", color: "#16a34a", tone: "ok", note: "Safe case was approved by the pipeline."},
+    adv_refuse: {label: "correctly blocked risky request", short: "correct block", color: "#eab308", tone: "warn", note: "Risky or out-of-policy case was not approved."},
+    security_underblock: {label: "security miss: risky request approved", short: "security miss", color: "#dc2626", tone: "bad", note: "A risky request was approved and needs review."},
+    quality_underblock: {label: "quality miss: broad SQL approved", short: "quality miss", color: "#f97316", tone: "warn", note: "The request was approved, but its labels point to scope, pagination, cost, or SELECT * risk."},
+    overblock: {label: "false reject: safe request not approved", short: "false reject", color: "#64748b", tone: "muted", note: "A positive dataset case was blocked or left undecided."},
+    loop_fail: {label: "stopped by repeat or iteration limit", short: "repeat / max iter", color: "#7c3aed", tone: "loop", note: "The runner stopped after repeated SQL or too many iterations."}
   };
   const qualityLabels = new Set(["EXCESSIVE_SCOPE", "NO_PAGINATION", "COST_DOS", "SELECT_STAR"]);
 
@@ -594,6 +594,38 @@
     return text.includes("повтор") || text.includes("лимит итераций") || text.includes("repeat") || text.includes("max_iter") || text.includes("iteration limit");
   }
 
+  function bucketLabel(key, mode){
+    const item = bucketMeta[key] || {};
+    return mode === "short" ? (item.short || item.label || key) : (item.label || String(key || "").replace(/_/g, " "));
+  }
+
+  function actualText(row){
+    if(row.approved) return "approved";
+    const decision = String(row.decision || "").toLowerCase();
+    if(decision === "abstain") return "not approved: checker abstained";
+    if(decision === "refuse") return "not approved: refused";
+    return decision ? `not approved: ${decision}` : "not approved";
+  }
+
+  function expectedText(row){
+    const kind = row.expected === "approve" ? "should approve safe request" : "should refuse risky request";
+    const labels = (row.risk_labels || []).join(", ") || "none";
+    return `${kind}; severity=${row.severity}; labels=${labels}`;
+  }
+
+  function fmtInt(v){
+    const n = Number(v || 0);
+    if(!Number.isFinite(n)) return "0";
+    return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  }
+
+  function fmtDuration(sec){
+    const n = Number(sec || 0);
+    if(!Number.isFinite(n)) return "n/a";
+    if(n >= 60) return fmt(n / 60, " min");
+    return fmt(n, " s");
+  }
+
   function mergeApproveRows(cases, golden){
     return cases.items.map((item, orderIndex) => {
       const seq = caseSeq(item.case_id);
@@ -677,6 +709,7 @@
           <div class="approve-chart-wrap">
             <div id="approveMainChart" class="approve-main-chart"></div>
             <div id="approveRateChart" class="approve-rate-chart"></div>
+            <div id="approveHoverPopover" class="approve-hover-popover" hidden></div>
           </div>
           <div class="approve-case-panel" id="approveCasePanel"></div>
           <div class="approve-run-config" id="approveRunConfig"></div>
@@ -699,7 +732,7 @@
         ${groupLabels.map(([key, label]) => `<label><input type="checkbox" data-approve-group="${key}" ${approveState.groups[key] ? "checked" : ""}> ${esc(label)}</label>`).join("")}
       </div>
       <div class="approve-filter-line approve-filter-line--buckets">
-        ${bucketLabels.map(([key, item]) => `<label><input type="checkbox" data-approve-bucket="${key}" ${approveState.buckets[key] ? "checked" : ""}> <span class="legend-dot" style="background:${item.color}"></span>${esc(item.label)}</label>`).join("")}
+        ${bucketLabels.map(([key, item]) => `<label><input type="checkbox" data-approve-bucket="${key}" ${approveState.buckets[key] ? "checked" : ""}> <span class="legend-dot" style="background:${item.color}"></span>${esc(bucketLabel(key, "short"))}</label>`).join("")}
         <input id="approveSearch" class="field-input approve-search" value="${esc(approveState.search)}" placeholder="case_id / task search">
       </div>`;
   }
@@ -795,17 +828,6 @@
     const opacity = rows.map(row => row.dim ? 0.18 : 0.9);
     const lineWidth = rows.map(row => row.loop_flag ? 3 : 1);
     const lineColor = rows.map(row => row.loop_flag ? bucketMeta.loop_fail.color : "#ffffff");
-    const custom = rows.map(row => [
-      esc(row.case_id),
-      esc(`${row.class_id} · ${row.class_name}`),
-      esc(`${row.expected} (severity=${row.severity}, risk_labels=[${row.risk_labels.join(", ")}])`),
-      esc(`${row.decision || ""} · ${row.approved ? "approve" : "not approved"}`),
-      esc(row.bucket.replace(/_/g, " ")),
-      esc(shortText(row.task_text || "", 160)),
-      esc(shortText(row.final_sql_text || "", 160)),
-      esc(`${row.iterations_used || 0} · ${fmt((row.duration_sec || 0) / 60, " min")} · ${fmt(row.total_tokens || 0)} tokens · ${money(row.cost_usd || 0)}`),
-      esc(row.human_reason || "")
-    ]);
     const main = document.getElementById("approveMainChart");
     if(window.Plotly && main){
       Plotly.newPlot(main, [{
@@ -813,42 +835,43 @@
         mode: "markers",
         x,
         y,
-        customdata: custom,
         marker: {
           size: sizes,
           color: colors,
           opacity,
           line: {width: lineWidth, color: lineColor}
         },
-        hovertemplate:
-          "<b>case_id:</b> %{customdata[0]}<br>" +
-          "<b>class:</b> %{customdata[1]}<br>" +
-          "<b>expected:</b> %{customdata[2]}<br>" +
-          "<b>actual:</b> %{customdata[3]}<br>" +
-          "<b>bucket:</b> %{customdata[4]}<br><br>" +
-          "<b>task:</b> %{customdata[5]}<br>" +
-          "<b>final_sql:</b> %{customdata[6]}<br>" +
-          "<b>iterations / duration / usage:</b> %{customdata[7]}<br>" +
-          "<b>human_reason:</b> %{customdata[8]}<extra></extra>"
+        hoverinfo: "none"
       }], {
-        margin: {t: 14, r: 18, b: 44, l: 50},
+        margin: {t: 14, r: 18, b: 44, l: 92},
         height: 360,
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "#fbfdff",
         font: {family: "Inter, system-ui, sans-serif", size: 11, color: "#334155"},
-        xaxis: {title: "dataset order", range: [0, totalCases + 1], gridcolor: "#eef2f7", zeroline: false},
+        xaxis: {title: {text: "dataset order", font: {size: 12, color: "#334155"}}, range: [0, totalCases + 1], gridcolor: "#eef2f7", zeroline: false},
         yaxis: {range: [-1.6, 1.6], tickmode: "array", tickvals: [-1, 0, 1], ticktext: ["not approved", "0", "approved"], gridcolor: "#e2e8f0", zeroline: true, zerolinecolor: "#94a3b8"},
         shapes,
         annotations,
+        hovermode: "closest",
         showlegend: false
       }, {displayModeBar: false, responsive: true});
+      if(main.removeAllListeners){
+        main.removeAllListeners("plotly_hover");
+        main.removeAllListeners("plotly_unhover");
+        main.removeAllListeners("plotly_click");
+      }
       main.on("plotly_hover", ev => {
         const point = ev?.points?.[0];
         if(point){
           const row = rows[point.pointIndex];
-          if(row) renderApproveCasePanel(row, false);
+          if(row){
+            renderApproveCasePanel(row, false);
+            showApproveHoverPopover(row, point);
+          }
         }
       });
+      main.on("plotly_unhover", hideApproveHoverPopover);
+      main.addEventListener("mouseleave", hideApproveHoverPopover);
       main.on("plotly_click", ev => {
         const point = ev?.points?.[0];
         if(point){
@@ -858,6 +881,7 @@
             writeApproveHash();
             renderApproveCharts();
             renderApproveCasePanel(row, true);
+            showApproveHoverPopover(row, point);
           }
         }
       });
@@ -888,7 +912,7 @@
         fillcolor: "rgba(37,99,235,.08)",
         hovertemplate: "case #%{x}<br>%{y:.2f}%<extra></extra>"
       }], {
-        margin: {t: 8, r: 18, b: 30, l: 50},
+        margin: {t: 8, r: 18, b: 30, l: 92},
         height: 96,
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "#fbfdff",
@@ -896,9 +920,85 @@
         xaxis: {range: [0, totalCases + 1], gridcolor: "#f1f5f9"},
         yaxis: {ticksuffix: "%", range: [0, Math.max(100, Math.ceil(Math.max(...y, 1) / 10) * 10)], gridcolor: "#e2e8f0"},
         shapes,
+        hoverlabel: {align: "left", bgcolor: "#ffffff", bordercolor: "#cbd5e1", font: {family: "Inter, system-ui, sans-serif", size: 12, color: "#0f172a"}},
         showlegend: false
       }, {displayModeBar: false, responsive: true});
     }
+  }
+
+  function renderRiskChips(labels){
+    const items = labels && labels.length ? labels : ["no risk labels"];
+    return items.map(label => `<span class="approve-risk-chip">${esc(label)}</span>`).join("");
+  }
+
+  function renderApproveHoverContent(row){
+    const meta = bucketMeta[row.bucket] || bucketMeta.overblock;
+    const note = row.loop_flag ? bucketMeta.loop_fail.note : meta.note;
+    return `
+      <div class="approve-popover-head">
+        <div>
+          <span class="approve-popover-kicker">case</span>
+          <b class="mono">${esc(row.case_id)}</b>
+        </div>
+        <span class="approve-bucket-chip approve-bucket-chip--${esc(meta.tone)}">${esc(bucketLabel(row.bucket))}</span>
+      </div>
+      <div class="approve-popover-row">
+        <span>Class</span>
+        <b>${esc(row.class_id)} · ${esc(row.class_name)}</b>
+      </div>
+      <div class="approve-popover-row">
+        <span>Expected</span>
+        <b>${esc(expectedText(row))}</b>
+      </div>
+      <div class="approve-popover-row">
+        <span>Actual</span>
+        <b>${esc(actualText(row))}</b>
+      </div>
+      <div class="approve-risk-list">${renderRiskChips(row.risk_labels)}</div>
+      <p class="approve-popover-note">${esc(note)}</p>
+      <div class="approve-popover-text">
+        <span>Task</span>
+        <p>${esc(shortText(row.task_text || "", 260))}</p>
+      </div>
+      <div class="approve-popover-text">
+        <span>Final SQL</span>
+        <p class="mono">${esc(shortText(row.final_sql_text || "", 220) || "n/a")}</p>
+      </div>
+      <div class="approve-popover-usage">
+        <span><b>${esc(row.iterations_used || 0)}</b> iterations</span>
+        <span><b>${esc(fmtDuration(row.duration_sec || 0))}</b> duration</span>
+        <span><b>${esc(fmtInt(row.total_tokens || 0))}</b> tokens</span>
+        <span><b>${esc(money(row.cost_usd || 0))}</b> cost</span>
+      </div>
+      <div class="approve-popover-text">
+        <span>Human reason</span>
+        <p>${esc(shortText(row.human_reason || "n/a", 240))}</p>
+      </div>`;
+  }
+
+  function showApproveHoverPopover(row, point){
+    const pop = document.getElementById("approveHoverPopover");
+    const wrap = document.querySelector(".approve-chart-wrap");
+    if(!pop || !wrap || !row) return;
+    pop.innerHTML = renderApproveHoverContent(row);
+    pop.hidden = false;
+    const chartWidth = document.getElementById("approveMainChart")?.clientWidth || wrap.clientWidth;
+    const leftBase = Number(point?.xaxis?._offset || 0) + Number(point?.xaxis?.l2p ? point.xaxis.l2p(point.x) : 0);
+    const topBase = Number(point?.yaxis?._offset || 0) + Number(point?.yaxis?.l2p ? point.yaxis.l2p(point.y) : 0);
+    requestAnimationFrame(() => {
+      const gap = 18;
+      const maxLeft = Math.max(12, wrap.clientWidth - pop.offsetWidth - 12);
+      const maxTop = Math.max(12, 360 - pop.offsetHeight - 12);
+      const sideLeft = leftBase > chartWidth * 0.58;
+      const nextLeft = sideLeft ? leftBase - pop.offsetWidth - gap : leftBase + gap;
+      const nextTop = topBase - Math.min(74, pop.offsetHeight / 3);
+      pop.style.transform = `translate(${Math.min(Math.max(12, nextLeft), maxLeft)}px, ${Math.min(Math.max(12, nextTop), maxTop)}px)`;
+    });
+  }
+
+  function hideApproveHoverPopover(){
+    const pop = document.getElementById("approveHoverPopover");
+    if(pop) pop.hidden = true;
   }
 
   function shortText(text, max){
@@ -914,8 +1014,8 @@
         <b>${selected ? "Selected" : "Hover"} case</b>
         <span class="mono">${esc(row.case_id)}</span>
         <span>${esc(row.class_id)} · ${esc(row.class_name)}</span>
-        <span>${esc(row.expected)} → ${esc(row.decision || "")}</span>
-        <span>${esc(row.bucket.replace(/_/g, " "))}</span>
+        <span>${esc(actualText(row))}</span>
+        <span>${esc(bucketLabel(row.bucket, "short"))}</span>
       </div>
       <p>${esc(shortText(row.task_text || "", 260))}</p>
       <div class="approve-case-actions">
