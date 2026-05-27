@@ -42,10 +42,23 @@
 
 2. Подготовить безопасный init-скрипт для PostgreSQL:
    ```bash
-   python scripts/prepare_init_sql.py
+   python3 scripts/prepare_init_sql.py
    ```
    Скрипт вырежет из исходного дампа GreenData строки с `CREATE DATABASE` и
-   `\connect`, без которых контейнер postgres не поднимается.
+   `\connect`, без которых контейнер postgres не поднимается, и обновит
+   `deploy/postgres-init/01-schema.sql`. Это именно тот файл, который
+   монтируется в контейнер как `/docker-entrypoint-initdb.d/01-schema.sql`.
+
+   Скрипт ищет исходный дамп в трех местах:
+   - `TASK-3/data_model .sql` - исходное имя заказчика с пробелом перед `.sql`;
+   - `TASK-3/data_model.sql`;
+   - `TASK-3/marina-case3-rag/data_model.sql`.
+
+   Если `TASK-3` лежит не в корне репозитория или дамп перенесен, укажите путь
+   явно:
+   ```bash
+   INIT_SQL_SOURCE=/path/to/data_model.sql python3 scripts/prepare_init_sql.py
+   ```
 
 3. Собрать образы и поднять базу:
    ```bash
@@ -251,7 +264,7 @@ FastAPI теперь обслуживает рабочий shell без Telegram
 ```
 .
 +-- app/                    наш Python-код: оркестратор, генератор, аудитор, UI, API
-+-- scripts/                вспомогательные скрипты (подготовка init.sql, сборка RAG, smoke)
++-- scripts/                вспомогательные скрипты (подготовка Postgres init SQL, сборка RAG, smoke)
 +-- deploy/                 Dockerfile, docker-compose.yml, postgres-init, примеры env
 +-- docs/                   эта документация
 +-- data/                   тома для трасс и индексов (gitignored)
