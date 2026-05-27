@@ -394,6 +394,14 @@ def get_benchmark_run_detail(benchmark_run_id: str) -> dict[str, Any]:
         api_error(500, "db_error", str(exc))
     if not result:
         api_error(404, "not_found", "Benchmark run not found.")
+    metrics = result.get("metrics")
+    if isinstance(metrics, dict):
+        metrics.setdefault("decision_accuracy", None)
+        metrics.setdefault("approve_with_advisory_rate", None)
+        metrics.setdefault("correct_decisions", 0)
+        metrics.setdefault("approve_with_advisory_count", 0)
+        metrics.setdefault("wrong_adv_approval_count", 0)
+        metrics.setdefault("wrong_positive_refusal_count", 0)
     return result
 
 
