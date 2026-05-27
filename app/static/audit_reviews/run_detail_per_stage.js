@@ -11,6 +11,7 @@
   let uiConfig = null;
   let goldenClassesPromise = null;
   let approveCasesPromise = null;
+  const approveMainChartHeight = 430;
   const approveState = {
     rows: [],
     classes: [],
@@ -844,7 +845,7 @@
         hoverinfo: "none"
       }], {
         margin: {t: 14, r: 18, b: 44, l: 92},
-        height: 360,
+        height: approveMainChartHeight,
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "#fbfdff",
         font: {family: "Inter, system-ui, sans-serif", size: 11, color: "#334155"},
@@ -861,18 +862,20 @@
         main.removeAllListeners("plotly_click");
       }
       main.on("plotly_hover", ev => {
+        if(approveState.caseId) return;
         const point = ev?.points?.[0];
         if(point){
           const row = rows[point.pointIndex];
           if(row){
             renderApproveCasePanel(row, false);
-            showApproveHoverPopover(row, point);
+            showApproveHoverPopover(row, point, false);
           }
         }
       });
       main.on("plotly_unhover", hideApproveHoverPopover);
       main.addEventListener("mouseleave", hideApproveHoverPopover);
       main.on("plotly_click", ev => {
+        if(approveState.caseId) return;
         const point = ev?.points?.[0];
         if(point){
           const row = rows[point.pointIndex];
@@ -881,13 +884,15 @@
             writeApproveHash();
             renderApproveCharts();
             renderApproveCasePanel(row, true);
-            showApproveHoverPopover(row, point);
           }
         }
       });
     }
     renderApproveRateChart(totalCases, shapes);
-    if(selectedCase) renderApproveCasePanel(selectedCase, true);
+    if(selectedCase){
+      renderApproveCasePanel(selectedCase, true);
+      showApproveHoverPopover(selectedCase, null, true);
+    }
   }
 
   function renderApproveRateChart(totalCases, shapes){
@@ -931,16 +936,19 @@
     return items.map(label => `<span class="approve-risk-chip">${esc(label)}</span>`).join("");
   }
 
-  function renderApproveHoverContent(row){
+  function renderApproveHoverContent(row, pinned){
     const meta = bucketMeta[row.bucket] || bucketMeta.overblock;
     const note = row.loop_flag ? bucketMeta.loop_fail.note : meta.note;
     return `
       <div class="approve-popover-head">
         <div>
-          <span class="approve-popover-kicker">case</span>
+          <span class="approve-popover-kicker">${pinned ? "pinned case" : "hover case"}</span>
           <b class="mono">${esc(row.case_id)}</b>
         </div>
-        <span class="approve-bucket-chip approve-bucket-chip--${esc(meta.tone)}">${esc(bucketLabel(row.bucket))}</span>
+        <div class="approve-popover-head-actions">
+          <span class="approve-bucket-chip approve-bucket-chip--${esc(meta.tone)}">${esc(bucketLabel(row.bucket))}</span>
+          ${pinned ? `<button type="button" class="approve-popover-clear" data-approve-unpin>Unpin</button>` : ""}
+        </div>
       </div>
       <div class="approve-popover-row">
         <span>Class</span>
@@ -976,19 +984,35 @@
       </div>`;
   }
 
-  function showApproveHoverPopover(row, point){
+  function showApproveHoverPopover(row, point, pinned){
     const pop = document.getElementById("approveHoverPopover");
     const wrap = document.querySelector(".approve-chart-wrap");
     if(!pop || !wrap || !row) return;
-    pop.innerHTML = renderApproveHoverContent(row);
+    pop.innerHTML = renderApproveHoverContent(row, pinned);
+    pop.classList.toggle("is-pinned", Boolean(pinned));
     pop.hidden = false;
     const chartWidth = document.getElementById("approveMainChart")?.clientWidth || wrap.clientWidth;
-    const leftBase = Number(point?.xaxis?._offset || 0) + Number(point?.xaxis?.l2p ? point.xaxis.l2p(point.x) : 0);
-    const topBase = Number(point?.yaxis?._offset || 0) + Number(point?.yaxis?.l2p ? point.yaxis.l2p(point.y) : 0);
+    const plot = document.getElementById("approveMainChart");
+    const xaxis = point?.xaxis || plot?._fullLayout?.xaxis;
+    const yaxis = point?.yaxis || plot?._fullLayout?.yaxis;
+    const xValue = point?.x ?? row.dataset_idx;
+    const yValue = point?.y ?? (row.approved ? 1 : -1);
+    const leftBase = Number(xaxis?._offset || 0) + Number(xaxis?.l2p ? xaxis.l2p(xValue) : 0);
+    const topBase = Number(yaxis?._offset || 0) + Number(yaxis?.l2p ? yaxis.l2p(yValue) : 0);
+    const clear = pop.querySelector("[data-approve-unpin]");
+    if(clear){
+      clear.addEventListener("click", () => {
+        approveState.caseId = "";
+        writeApproveHash();
+        hideApproveHoverPopover(true);
+        renderApproveCharts();
+        renderApproveCasePanel(row, false);
+      });
+    }
     requestAnimationFrame(() => {
       const gap = 18;
       const maxLeft = Math.max(12, wrap.clientWidth - pop.offsetWidth - 12);
-      const maxTop = Math.max(12, 360 - pop.offsetHeight - 12);
+      const maxTop = Math.max(12, approveMainChartHeight - pop.offsetHeight - 12);
       const sideLeft = leftBase > chartWidth * 0.58;
       const nextLeft = sideLeft ? leftBase - pop.offsetWidth - gap : leftBase + gap;
       const nextTop = topBase - Math.min(74, pop.offsetHeight / 3);
@@ -996,9 +1020,13 @@
     });
   }
 
-  function hideApproveHoverPopover(){
+  function hideApproveHoverPopover(force){
+    if(approveState.caseId && !force) return;
     const pop = document.getElementById("approveHoverPopover");
-    if(pop) pop.hidden = true;
+    if(pop){
+      pop.hidden = true;
+      pop.classList.remove("is-pinned");
+    }
   }
 
   function shortText(text, max){
