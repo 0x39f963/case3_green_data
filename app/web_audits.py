@@ -25,6 +25,8 @@ ALLOWED_ASSETS = {
     "audit_run_compare.js",
     "run_detail_insights.js",
     "run_detail_per_stage.js",
+    "labels_dict.json",
+    "metric_labels_ru.json",
     "sql_event_specs.js",
     "settings_tariffs.js",
     "batch_cases.css",
@@ -32,6 +34,7 @@ ALLOWED_ASSETS = {
 }
 ALLOWED_DATASET_ASSETS = {
     "golden_v2.jsonl",
+    "golden_v2_bucket_overrides.jsonl",
 }
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))

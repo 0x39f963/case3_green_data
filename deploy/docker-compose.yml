@@ -121,7 +121,7 @@ services:
       # published on the host. Pass an explicit DSN so the app container never
       # falls back to its own 127.0.0.1 when reading benchmark.rag_embeddings.
       BENCHMARK_DSN: ${BENCHMARK_DSN:-postgresql://bench:bench@host.docker.internal:15434/bench}
-      BENCHMARK_API_URL: ${BENCHMARK_API_URL:-http://127.0.0.1:18080}
+      BENCHMARK_API_URL: ${BENCHMARK_API_URL:-http://127.0.0.1:18082}
       TABLE_KNOWLEDGE_V2_ENABLED: ${TABLE_KNOWLEDGE_V2_ENABLED:-true}
       RAG_BRIDGE_BLACKLIST_ROLES: ${RAG_BRIDGE_BLACKLIST_ROLES:-bridge_multiselect}
       AUDITOR_GROUPED_ENABLED: ${AUDITOR_GROUPED_ENABLED:-false}

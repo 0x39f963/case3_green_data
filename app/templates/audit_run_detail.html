@@ -52,7 +52,24 @@
       <tbody></tbody>
     </table>
   </section>
-  <section class="kpi-grid" id="kpiGrid"></section>
+  <section class="card audit-lite honest-score" id="honestScore">
+    <div class="case-muted">Загрузка честного счета...</div>
+  </section>
+  <section class="metric-sections" id="kpiGrid"></section>
+  <section class="card audit-lite iteration-summary" id="iterationStats">
+    <div class="audit-lite__toolbar">
+      <h2>Статистика итераций</h2>
+      <span class="case-muted">Сколько попыток потребовалось pipeline до решения</span>
+    </div>
+    <div class="case-muted">Загрузка статистики итераций...</div>
+  </section>
+  <section class="card audit-lite decision-map" id="decisionMapSection">
+    <div class="audit-lite__toolbar">
+      <h2>Карта решений</h2>
+      <span class="case-muted">Правильные решения отделены от ошибок</span>
+    </div>
+    <div class="case-muted">Загрузка карты решений...</div>
+  </section>
   <section class="card audit-lite">
     <h2>Per-stage Breakdown</h2>
     <table class="audit-table" id="stageTable"><thead><tr><th>stage</th><th>avg ms</th><th>p95 ms</th><th>avg tokens in</th><th>avg cost</th><th>fail rate</th></tr></thead><tbody></tbody></table>

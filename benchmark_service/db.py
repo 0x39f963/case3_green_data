@@ -3090,6 +3090,7 @@ def _case_base_sql() -> str:
                 r.approved,
                 r.needs_human,
                 r.human_reason,
+                r.policy_label,
                 r.iterations_used,
                 r.duration_sec * 1000 AS duration_ms,
                 r.duration_sec,
