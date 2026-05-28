@@ -76,6 +76,37 @@
 .decision-legend b{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .decision-legend em{font-style:normal;color:#0f172a;font-weight:800}
 .decision-map-body{border:1px solid #e2e8f0;border-radius:8px;background:#fff;padding:12px}
+.decision-heat-note{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:10px;color:#475569;font-size:12px}
+.decision-heat-note span{border:1px solid #dbeafe;border-radius:999px;background:#eff6ff;color:#1d4ed8;padding:4px 9px;font-weight:700;white-space:nowrap}
+.decision-heat-note p{margin:0;line-height:1.45;text-align:right}
+.decision-heat-scroll{overflow:auto;border:1px solid #e2e8f0;border-radius:8px;background:#fff}
+.decision-heat-table{width:100%;min-width:920px;border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:12px}
+.decision-heat-table th,.decision-heat-table td{border-right:1px solid #edf2fa;border-bottom:1px solid #edf2fa;padding:6px;text-align:center;vertical-align:middle}
+.decision-heat-table th:last-child,.decision-heat-table td:last-child{border-right:0}
+.decision-heat-table tbody tr:last-child th,.decision-heat-table tbody tr:last-child td{border-bottom:0}
+.decision-heat-table thead th{position:sticky;top:0;z-index:2;background:#f8fbff;color:#334155;font-weight:750;line-height:1.25}
+.decision-heat-table thead th:first-child,.decision-heat-table tbody th{position:sticky;left:0;z-index:3;background:#fff;text-align:left}
+.decision-heat-table thead th:first-child{z-index:4;background:#f8fbff;width:190px}
+.decision-heat-table tbody th b{display:block;color:#0f172a;font-size:12px;line-height:1.25}
+.decision-heat-table tbody th span{display:block;color:#64748b;font-size:11px;margin-top:2px}
+.decision-heat-cell{width:100%;min-height:54px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#0f172a;padding:7px 5px;display:grid;align-content:center;gap:2px;font:inherit;cursor:pointer}
+.decision-heat-cell:hover,.decision-heat-cell.is-active{outline:2px solid #2563eb;outline-offset:1px}
+.decision-heat-cell b{font-size:18px;line-height:1}
+.decision-heat-cell span{font-size:11px;color:#334155;font-weight:700}
+.decision-heat-accuracy{border-radius:0;color:#fff;text-shadow:0 1px 1px rgba(15,23,42,.18)}
+.decision-heat-accuracy b{display:block;font-size:16px;line-height:1}
+.decision-heat-accuracy span{display:block;font-size:10.5px;margin-top:3px;font-weight:700}
+.decision-heat-cases{margin-top:10px;border:1px solid #dbeafe;border-radius:8px;background:#f8fbff;padding:10px}
+.decision-heat-cases.is-empty{color:#64748b;font-size:12px}
+.decision-heat-cases__head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.decision-heat-cases__head b{font-size:13px;color:#0f172a}
+.decision-heat-cases__head span{font-size:12px;color:#475569;font-weight:700}
+.decision-heat-case-list{display:grid;gap:7px;max-height:360px;overflow:auto}
+.decision-heat-case-list article{display:grid;grid-template-columns:minmax(260px,1fr) minmax(0,1.5fr) auto;gap:10px;align-items:center;border:1px solid #e2e8f0;border-radius:8px;background:#fff;padding:8px 10px}
+.decision-heat-case-list article div{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}
+.decision-heat-case-list article div span{border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc;padding:2px 7px;color:#334155;font-size:11px}
+.decision-heat-case-list article small{color:#64748b;font-size:11px}
+.decision-heat-case-list article p{margin:0;color:#334155;font-size:12px;line-height:1.35;min-width:0}
 .decision-matrix-wrap{display:grid;grid-template-columns:minmax(520px,1fr) 280px;gap:14px}
 .decision-matrix{display:grid;grid-template-columns:150px repeat(2,minmax(0,1fr));gap:8px}
 .decision-axis{display:grid;place-items:center;border-radius:8px;background:#f8fafc;color:#475569;font-size:12px;font-weight:700;text-align:center;padding:8px}
@@ -290,6 +321,9 @@
   .metric-section__head,.honest-score__main,.honest-score__split,.iteration-grid,.decision-matrix-wrap,.decision-dot-grid{grid-template-columns:1fr}
   .metric-section__head p{text-align:left}
   .decision-legend{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .decision-heat-note{display:block}
+  .decision-heat-note p{text-align:left;margin-top:7px}
+  .decision-heat-case-list article{grid-template-columns:1fr}
   .decision-matrix{grid-template-columns:120px repeat(2,minmax(0,1fr));min-width:520px}
   .decision-map-body{overflow:auto}
   .decision-class-row{grid-template-columns:1fr}

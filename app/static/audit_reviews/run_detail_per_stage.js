@@ -14,7 +14,8 @@
   let approveCasesPromise = null;
   let metricLabelsPromise = null;
   let metricLabelsRu = {};
-  let decisionMapMode = "matrix";
+  let decisionMapMode = "heatmap_detail";
+  let decisionHeatmapPick = null;
   const approveMainChartHeight = 530;
   const approveState = {
     rows: [],
@@ -618,6 +619,12 @@
     quality_underblock: {label: "Пропущено качество", short: "пропущено качество", color: "#f97316", tone: "warn", result: "Ошибка качества", note: "Кейс должен был пройти как approve с замечанием, но pipeline не довел его до корректного advisory-решения."},
     overblock: {label: "Зря отказано", short: "зря отказано", color: "#64748b", tone: "muted", result: "Ошибка", note: "Безопасный кейс должен был быть одобрен, но pipeline отказал или ушел в abstain."},
     loop_fail: {label: "Застрял в цикле", short: "застрял в цикле", color: "#7c3aed", tone: "loop", result: "Технический стоп", note: "Runner остановился из-за повтора SQL или лимита итераций. Это сигнал о проблеме retry loop."}
+  };
+  const heatmapBucketOrder = ["correct", "adv_refuse", "security_underblock", "quality_underblock", "overblock", "loop_fail"];
+  const heatmapModeLabels = {
+    heatmap_detail: "Подробно (6)",
+    heatmap_short: "Кратко (3)",
+    heatmap_fpfn: "FP-FN"
   };
   const riskLabelMeta = {
     DIRECT_SENSITIVE: {title: "Чувствительные данные", text: "SQL напрямую выводит персональные или служебные поля. Такие данные нужно агрегировать, маскировать или исключать."},
@@ -1567,21 +1574,23 @@
     el.innerHTML = `
       <div class="audit-lite__toolbar">
         <div>
-          <h2>Карта решений</h2>
-          <span class="case-muted">Слева смысл эталона, справа действие pipeline: правильные решения отделены от ошибок.</span>
+          <h2>Тепловая карта решений по типам запросов</h2>
+          <span class="case-muted">Строки - классы SQL-задач, столбцы - категории отработки. Красные ячейки показывают, где система ошибается чаще.</span>
         </div>
         <div class="decision-map-switch" role="group" aria-label="Вид карты решений">
-          ${[["matrix", "Матрица"], ["classes", "По классам"], ["dots", "Точки"]].map(([key, label]) => `<button type="button" data-map-mode="${key}" class="${decisionMapMode === key ? "is-active" : ""}">${esc(label)}</button>`).join("")}
+          ${Object.entries(heatmapModeLabels).map(([key, label]) => `<button type="button" data-map-mode="${key}" class="${decisionMapMode === key ? "is-active" : ""}">${esc(label)}</button>`).join("")}
         </div>
       </div>
       ${renderDecisionLegend(rows)}
       <div class="decision-map-body" id="decisionMapBody">${renderDecisionMapView(rows, golden)}</div>`;
     el.querySelectorAll("[data-map-mode]").forEach(btn => {
       btn.addEventListener("click", () => {
-        decisionMapMode = btn.dataset.mapMode || "matrix";
+        decisionMapMode = btn.dataset.mapMode || "heatmap_detail";
+        decisionHeatmapPick = null;
         renderDecisionMapBlock(rows, golden);
       });
     });
+    bindDecisionHeatmap(rows, golden);
   }
 
   function renderDecisionLegend(rows){
@@ -1599,9 +1608,161 @@
   }
 
   function renderDecisionMapView(rows, golden){
-    if(decisionMapMode === "classes") return renderDecisionClassBars(rows, golden);
-    if(decisionMapMode === "dots") return renderDecisionDots(rows);
-    return renderDecisionMatrix(rows);
+    if(decisionMapMode === "heatmap_short") return renderDecisionHeatmap(rows, golden, "short");
+    if(decisionMapMode === "heatmap_fpfn") return renderDecisionHeatmap(rows, golden, "fpfn");
+    return renderDecisionHeatmap(rows, golden, "detail");
+  }
+
+  function isCorrectDecision(row){
+    return row.bucket === "correct" || row.bucket === "adv_refuse";
+  }
+
+  function heatmapColumns(kind){
+    if(kind === "short"){
+      return [
+        {key: "right", label: "Правильно", color: "#16a34a", note: "Верно одобрено или верно отказано.", match: row => isCorrectDecision(row)},
+        {key: "error", label: "Ошибка", color: "#dc2626", note: "Пропущена атака, пропущено качество или зря отказано.", match: row => !isCorrectDecision(row)},
+        {key: "loop_fail", label: "Цикл", color: "#7c3aed", note: bucketMeta.loop_fail.note, match: row => row.loop_flag}
+      ];
+    }
+    if(kind === "fpfn"){
+      return [
+        {key: "right", label: "Верно (TP+TN)", color: "#16a34a", note: "TP+TN: система сделала правильное действие для безопасного или рискованного кейса.", match: row => isCorrectDecision(row)},
+        {key: "fn", label: "Ложный пропуск (FN)", color: "#dc2626", note: "Ложный пропуск = система одобрила то, что надо было отклонить.", match: row => row.bucket === "security_underblock"},
+        {key: "fp", label: "Ложный отказ (FP)", color: "#64748b", note: "Ложный отказ = система отклонила безопасный запрос.", match: row => row.bucket === "overblock"},
+        {key: "quality", label: "Качество", color: "#f97316", note: bucketMeta.quality_underblock.note, match: row => row.bucket === "quality_underblock"},
+        {key: "loop_fail", label: "Цикл", color: "#7c3aed", note: bucketMeta.loop_fail.note, match: row => row.loop_flag}
+      ];
+    }
+    return heatmapBucketOrder.map(key => ({
+      key,
+      label: bucketMeta[key].label,
+      color: bucketMeta[key].color,
+      note: bucketMeta[key].note,
+      match: row => key === "loop_fail" ? row.loop_flag : row.bucket === key
+    }));
+  }
+
+  function heatColor(base, share){
+    const match = String(base || "").match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+    if(!match || !share) return "#ffffff";
+    const rgb = [parseInt(match[1], 16), parseInt(match[2], 16), parseInt(match[3], 16)];
+    const alpha = Math.max(0.08, Math.min(0.84, 0.12 + share * 0.72));
+    return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha.toFixed(3)})`;
+  }
+
+  function accuracyColor(value){
+    const v = Math.max(0, Math.min(1, Number(value || 0)));
+    const red = [220, 38, 38];
+    const mid = [249, 115, 22];
+    const green = [22, 163, 74];
+    const from = v < 0.5 ? red : mid;
+    const to = v < 0.5 ? mid : green;
+    const t = v < 0.5 ? v / 0.5 : (v - 0.5) / 0.5;
+    const rgb = from.map((part, index) => Math.round(part + (to[index] - part) * t));
+    return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.78)`;
+  }
+
+  function renderDecisionHeatmap(rows, golden, kind){
+    const classes = golden?.classes?.length ? golden.classes : approveState.classes;
+    const cols = heatmapColumns(kind);
+    const pick = decisionHeatmapPick && decisionHeatmapPick.kind === kind ? decisionHeatmapPick : null;
+    const tableRows = classes.map(cls => {
+      const items = rows.filter(row => Number(row.class_id) === Number(cls.class_id));
+      const total = items.length || 0;
+      const okCount = items.filter(isCorrectDecision).length;
+      const acc = total ? okCount / total : 0;
+      return `<tr>
+        <th scope="row">
+          <b>${esc(cls.class_id)}. ${esc(classRuName(cls))}</b>
+          <span>${esc(fmtInt(total))} кейсов</span>
+        </th>
+        ${cols.map(col => {
+          const cellRows = items.filter(col.match);
+          const count = cellRows.length;
+          const share = total ? count / total : 0;
+          const active = pick && Number(pick.classId) === Number(cls.class_id) && pick.colKey === col.key;
+          const title = `${classRuName(cls)}, ${col.label}: ${count} кейсов (${pct1(share)} класса)`;
+          return `<td>
+            <button type="button" class="decision-heat-cell${active ? " is-active" : ""}" data-heat-cell="1" data-heat-kind="${esc(kind)}" data-heat-class="${esc(cls.class_id)}" data-heat-col="${esc(col.key)}" style="background:${esc(heatColor(col.color, share))};border-color:${esc(heatColor(col.color, Math.max(share, 0.18)))}" title="${esc(title)}">
+              <b>${esc(fmtInt(count))}</b>
+              <span>${esc(pct1(share))}</span>
+            </button>
+          </td>`;
+        }).join("")}
+        <td class="decision-heat-accuracy" style="background:${esc(accuracyColor(acc))}" title="${esc(okCount)} верно из ${esc(total)}">
+          <b>${esc(pct1(acc))}</b>
+          <span>${esc(fmtInt(okCount))}/${esc(fmtInt(total))}</span>
+        </td>
+      </tr>`;
+    }).join("");
+    return `
+      <div class="decision-heat-note">
+        <span>${esc(heatmapModeLabels["heatmap_" + kind] || heatmapModeLabels.heatmap_detail)}</span>
+        <p>${esc(heatmapHint(kind))}</p>
+      </div>
+      <div class="decision-heat-scroll">
+        <table class="decision-heat-table">
+          <thead>
+            <tr>
+              <th>Класс SQL-задачи</th>
+              ${cols.map(col => `<th title="${esc(col.note || "")}">${esc(col.label)}</th>`).join("")}
+              <th>Точность класса %</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+      ${renderHeatmapCaseList(rows, cols, kind)}`;
+  }
+
+  function heatmapHint(kind){
+    if(kind === "short") return "Упрощенный вид для презентации: правильно, ошибка и отдельный сигнал retry loop.";
+    if(kind === "fpfn") return "Технический вид: FN - опасный пропуск, FP - ложный отказ безопасного запроса.";
+    return "Подробный вид: шесть категорий отработки, числа в ячейках и интенсивность по доле класса.";
+  }
+
+  function bindDecisionHeatmap(rows, golden){
+    document.querySelectorAll("[data-heat-cell]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        decisionHeatmapPick = {
+          kind: btn.dataset.heatKind || "detail",
+          classId: Number(btn.dataset.heatClass || 0),
+          colKey: btn.dataset.heatCol || ""
+        };
+        const body = document.getElementById("decisionMapBody");
+        if(body) body.innerHTML = renderDecisionMapView(rows, golden);
+        bindDecisionHeatmap(rows, golden);
+      });
+    });
+  }
+
+  function renderHeatmapCaseList(rows, cols, kind){
+    const pick = decisionHeatmapPick && decisionHeatmapPick.kind === kind ? decisionHeatmapPick : null;
+    if(!pick){
+      return `<div class="decision-heat-cases is-empty">Нажмите на ячейку, чтобы увидеть case_id этой категории.</div>`;
+    }
+    const col = cols.find(item => item.key === pick.colKey);
+    const clsRows = rows.filter(row => Number(row.class_id) === Number(pick.classId));
+    const items = col ? clsRows.filter(col.match) : [];
+    const title = `${pick.classId}. ${classRuName({class_id: pick.classId})} / ${col?.label || pick.colKey}`;
+    return `<div class="decision-heat-cases">
+      <div class="decision-heat-cases__head">
+        <b>${esc(title)}</b>
+        <span>${esc(fmtInt(items.length))} кейсов</span>
+      </div>
+      <div class="decision-heat-case-list">
+        ${items.slice(0, 80).map(row => `<article>
+          <div>
+            <b class="mono">${esc(row.case_id)}</b>
+            <span>${esc(bucketLabel(row.bucket, "short"))}${row.loop_flag ? " / цикл" : ""}</span>
+            <small>${esc(actualText(row))}</small>
+          </div>
+          <p>${esc(shortText(row.task_text || "", 180))}</p>
+          <a class="btn" href="${row.trace_id ? `/runs/${encodeURIComponent(row.trace_id)}` : `/audits/batch-cases?run_id=${encodeURIComponent(runId)}&q=${encodeURIComponent(row.case_id || "")}`}">Open trace</a>
+        </article>`).join("") || `<span class="case-muted">Кейсов в этой ячейке нет.</span>`}
+      </div>
+    </div>`;
   }
 
   function renderDecisionMatrix(rows){
