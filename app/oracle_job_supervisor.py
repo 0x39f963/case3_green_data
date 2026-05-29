@@ -164,6 +164,11 @@ def reconcile_orphan_jobs() -> int:
 
 
 def _build_cmd(benchmark_run_id: str, payload: dict[str, Any]) -> list[str]:
+    golden = str(payload.get("golden") or "")
+    if not golden and benchmark_run_id.startswith("golden_v2_"):
+        golden = "data/eval/golden_v2.jsonl"
+    elif not golden:
+        golden = "data/eval/golden_dataset_v1_1.csv"
     cmd = [
         sys.executable,
         "scripts/bench_oracle_existing_run.py",
@@ -172,7 +177,7 @@ def _build_cmd(benchmark_run_id: str, payload: dict[str, Any]) -> list[str]:
         "--dataset-version",
         str(payload.get("dataset_version") or "1.1"),
         "--golden",
-        str(payload.get("golden") or "data/eval/golden_dataset_v1_1.csv"),
+        golden,
         "--ingest-store",
     ]
     if payload.get("missing_only", True):

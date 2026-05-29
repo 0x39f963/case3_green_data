@@ -18,11 +18,12 @@ if str(ROOT) not in sys.path:
 
 from benchmark_service import db  # noqa: E402
 from scripts._oracle.dispatchers import dispatch  # noqa: E402
-from scripts._oracle.loaders import load_golden_v1_1  # noqa: E402
+from scripts._oracle.loaders import load_golden_v1_1, load_oracle_cases  # noqa: E402
 from scripts._oracle.types import OracleCase, OracleVerdict  # noqa: E402
 
 
 DEFAULT_GOLDEN = ROOT / "data" / "eval" / "golden_dataset_v1_1.csv"
+DEFAULT_GOLDEN_V2 = ROOT / "data" / "eval" / "golden_v2.jsonl"
 
 
 def normalize_oracle_test_id(case_id: str) -> str:
@@ -62,7 +63,9 @@ def build_pipeline_response(row: dict[str, Any]) -> dict[str, Any]:
 
 def run_oracle(args: argparse.Namespace) -> dict[str, Any]:
     _load_benchmark_env()
-    cases = {case.test_id: case for case in load_golden_v1_1(args.golden)}
+    golden_path = _golden_path(args.benchmark_run_id, args.golden)
+    loader = load_oracle_cases if golden_path.suffix == ".jsonl" else load_golden_v1_1
+    cases = {case.test_id: case for case in loader(golden_path)}
     type_filter = {item.strip() for item in args.oracle_types.split(",") if item.strip()}
     case_filter = {str(item) for item in args.case_id or []}
     case_filter_norm = {normalize_oracle_test_id(item) for item in case_filter}
@@ -139,6 +142,7 @@ def run_oracle(args: argparse.Namespace) -> dict[str, Any]:
     report = {
         "run_id": args.benchmark_run_id,
         "dataset_version": args.dataset_version,
+        "golden": str(golden_path),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "total_cases": len(verdicts),
         "seen_total": seen_total,
@@ -199,11 +203,19 @@ def _load_benchmark_env() -> None:
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
+def _golden_path(benchmark_run_id: str, raw_path: Path | str | None) -> Path:
+    if raw_path:
+        return Path(raw_path)
+    if str(benchmark_run_id).startswith("golden_v2_"):
+        return DEFAULT_GOLDEN_V2
+    return DEFAULT_GOLDEN
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Oracle against stored benchmark.pipeline_runs.")
     parser.add_argument("--benchmark-run-id", required=True)
     parser.add_argument("--dataset", default="")
-    parser.add_argument("--golden", type=Path, default=DEFAULT_GOLDEN)
+    parser.add_argument("--golden", type=Path, default=None)
     parser.add_argument("--dataset-version", default="1.1")
     parser.add_argument("--case-id", action="append", default=[])
     parser.add_argument("--limit", type=int, default=0)

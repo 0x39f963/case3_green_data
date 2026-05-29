@@ -74,17 +74,22 @@ services:
     image: case3_app:latest
     container_name: case3_rag_init_v2
     profiles: ["init"]
+    env_file:
+      - benchmark.env
     environment:
       SENTENCE_TRANSFORMERS_HOME: /app/data/model_cache
       HF_HOME: /app/data/model_cache
-      # benchmark_pg поднимается отдельным deploy/benchmark-compose.yml.
-      BENCHMARK_DSN: ${BENCHMARK_DSN:-postgresql://bench:bench@host.docker.internal:15434/bench}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - benchmark_net
     volumes:
       - model_cache:/app/data/model_cache
       - ../data/rag/v2:/app/data/rag/v2:ro
-    command: ["python", "scripts/build_table_knowledge_v2.py", "--force"]
+    command: >
+      bash -lc 'export BENCHMARK_DSN="$${BENCHMARK_DSN:-postgresql://$${BENCH_USER:-bench}:$${BENCH_PASSWORD:-bench}@$${BENCH_INTERNAL_HOST:-benchmark-postgres}:$${BENCH_INTERNAL_PORT:-5432}/$${BENCH_DB:-bench}}";
+      exec python scripts/build_table_knowledge_v2.py --force'
 
   app:
     build:
@@ -118,9 +123,9 @@ services:
       POSTGRES_DSN: postgresql://${POSTGRES_USER:-demo}:${POSTGRES_PASSWORD:-demo}@postgres:5432/${POSTGRES_DB:-demo_db}
       POSTGRES_AUDIT_DSN: postgresql://audit_ro:${POSTGRES_AUDIT_PASSWORD:-audit_ro_password}@postgres:5432/${POSTGRES_DB:-demo_db}
       # benchmark_pg is usually started from deploy/benchmark-compose.yml and
-      # published on the host. Pass an explicit DSN so the app container never
-      # falls back to its own 127.0.0.1 when reading benchmark.rag_embeddings.
-      BENCHMARK_DSN: ${BENCHMARK_DSN:-postgresql://bench:bench@host.docker.internal:15434/bench}
+      # app/oracle jobs use the same benchmark DB as benchmark-api through the
+      # benchmark compose network. The app command builds BENCHMARK_DSN at
+      # runtime from deploy/benchmark.env so the password stays out of git.
       BENCHMARK_API_URL: ${BENCHMARK_API_URL:-http://127.0.0.1:18082}
       TABLE_KNOWLEDGE_V2_ENABLED: ${TABLE_KNOWLEDGE_V2_ENABLED:-true}
       RAG_BRIDGE_BLACKLIST_ROLES: ${RAG_BRIDGE_BLACKLIST_ROLES:-bridge_multiselect}
@@ -156,7 +161,12 @@ services:
     # host-published local Ollama port in this deployment.
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - default
+      - benchmark_net
+    command: >
+      bash -lc 'export BENCHMARK_DSN="$${BENCHMARK_DSN:-postgresql://$${BENCH_USER:-bench}:$${BENCH_PASSWORD:-bench}@$${BENCH_INTERNAL_HOST:-benchmark-postgres}:$${BENCH_INTERNAL_PORT:-5432}/$${BENCH_DB:-bench}}";
+      exec uvicorn app.api:app --host 0.0.0.0 --port 8000'
 
   ui:
     image: case3_app:latest
@@ -260,4 +270,9 @@ volumes:
   model_cache:
   traces:
   web_chats:
+
+networks:
+  benchmark_net:
+    external: true
+    name: deploy_default
   llm_models:
