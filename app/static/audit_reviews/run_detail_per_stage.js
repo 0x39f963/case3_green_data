@@ -1599,10 +1599,17 @@
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {});
-    return `<div class="decision-legend">
+    return `<div class="decision-legend decision-summary-cards">
       ${["correct", "adv_refuse", "security_underblock", "quality_underblock", "overblock", "loop_fail"].map(key => {
         const item = bucketMeta[key];
-        return `<span><i style="background:${esc(item.color)}"></i><b>${esc(item.label)}</b><em>${esc(fmtInt(counts[key] || 0))}</em></span>`;
+        const count = counts[key] || 0;
+        return `<section class="decision-summary-card" style="--bucket-color:${esc(item.color)};--bucket-soft:${esc(heatColor(item.color, 0.18))};--bucket-tint:${esc(heatColor(item.color, 0.08))}">
+          <div class="decision-summary-card__head">
+            <i></i>
+            <b>${esc(item.label)}</b>
+          </div>
+          <strong>${esc(fmtInt(count))}</strong>
+        </section>`;
       }).join("")}
     </div>`;
   }
@@ -1713,7 +1720,36 @@
           <tbody>${tableRows}</tbody>
         </table>
       </div>
+      ${renderHeatmapMiniBars(rows, classes, cols)}
       ${renderHeatmapCaseList(rows, cols, kind)}`;
+  }
+
+  function renderHeatmapMiniBars(rows, classes, cols){
+    return `<div class="decision-heat-mini">
+      <div class="decision-heat-mini__head">
+        <b>Мини-сводка по классам</b>
+        <span>Полосы используют те же категории, что и таблица выше.</span>
+      </div>
+      <div class="decision-heat-mini__grid">
+        ${classes.map(cls => {
+          const items = rows.filter(row => Number(row.class_id) === Number(cls.class_id));
+          const total = items.length || 0;
+          const segments = cols.map(col => {
+            const count = items.filter(col.match).length;
+            if(!count) return "";
+            const width = total ? Math.max(3, count * 100 / total) : 0;
+            return `<span style="width:${esc(width.toFixed(2))}%;background:${esc(col.color)}" title="${esc(col.label)}: ${esc(fmtInt(count))}"></span>`;
+          }).join("");
+          return `<article>
+            <div>
+              <b>${esc(cls.class_id)}. ${esc(classRuName(cls))}</b>
+              <small>${esc(fmtInt(total))} кейсов</small>
+            </div>
+            <p>${segments || `<span style="width:100%;background:#e2e8f0" title="нет кейсов"></span>`}</p>
+          </article>`;
+        }).join("")}
+      </div>
+    </div>`;
   }
 
   function heatmapHint(kind){
