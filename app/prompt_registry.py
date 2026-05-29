@@ -26,7 +26,7 @@ PROMPT_FILES: dict[str, str] = {
 }
 PROMPT_TYPES = tuple(PROMPT_FILES.keys())
 STATUS_VALUES = {"draft", "active", "archived"}
-DEFAULT_SEED_VERSION = 7
+DEFAULT_SEED_VERSION = 8
 
 
 SCHEMA_SQL = """

@@ -12,13 +12,20 @@
 
 Обязательные правила ревизии:
 - Не повторяй тот же SQL.
+- Порядок ремонта: (1) исправь тип литерала, несуществующую колонку/таблицу или запрещенный identifier; (2) сохрани форму исходной задачи; (3) только потом меняй projection/join/table, если без этого нельзя.
 - Если аудит назвал HALLUCINATED_TABLE или HALLUCINATED_COLUMN, полностью убери эти identifiers.
+- Не переиспользуй запрещенные identifiers из аудита или блока BANNED_IDENTIFIERS ни в каком месте SQL, включая alias.
 - Если аудит сообщил "there is no parameter $N" или UNBOUND_PLACEHOLDER, убери $1/$2 и сделай standalone SQL с валидированными литералами или верни INSUFFICIENT_CONTEXT.
+- Если аудит/EXPLAIN сообщил type error (`smallint = boolean`, `invalid input syntax for type smallint/integer/bigint`), сначала убери строковый/boolean literal. Для `status/state/decision/type/*_id` не выдумывай текстовый enum или boolean.
+- Если аудит сообщил WRONG_JOIN_PATH, используй только join path из "Разрешенные таблицы и колонки"; если нужного пути нет, верни INSUFFICIENT_CONTEXT.
 - Если аудит сообщил DIRECT_SENSITIVE или MASKING_REQUIRED, сначала сохрани исходную форму задачи: для row-level запроса убери/замаскируй только raw personal fields, но не превращай выборку строк в COUNT.
+- Для row-level запроса сначала сузь SELECT до минимальных колонок из задачи. Не добавляй описательные/контактные/INN/phone/email/comment/workflow поля без явного запроса.
 - Делай aggregate COUNT только если исходная задача явно просила количество/статистику/группировку или если это отчет по сотрудникам без персональных полей и row-level employee output невозможен по PII policy.
 - Если задача просит "покажи", "список", "выборка", "всех participant_app", "без ограничения" или "100 строк", верни строковую выборку с явными колонками, ORDER BY и LIMIT; COUNT в такой ревизии считается semantic drift.
 - Не выводи employee id, name, first_name, second_name, sur_name, email, phone, birthday, pers_emp_number или per-person timestamp в таком отчете.
 - Если исходный intent был COUNT, AVG, MAX, GROUP BY или top-N, сохрани этот intent после исправлений.
+- Если исходная задача была "top by X", ORDER BY обязан остаться по X или по разрешенной колонке той же метрики. Не меняй на latest by id.
+- Если исходная задача была небезопасным full dump / mass export / row-cap bypass, верни REFUSAL_REQUIRED. Не переписывай ее в COUNT/top-N.
 - Если задача требует отказа, верни REFUSAL_REQUIRED sentinel, а не бизнес SQL.
 
 {banned_identifiers}

@@ -20,6 +20,15 @@
 
 `vuln_class` — ВСЕГДА UPPER_SNAKE_CASE из таксономии. Кириллица недопустима.
 
+## Shared blocking labels
+
+Security labels that every judge must understand:
+DIRECT_SENSITIVE, MASKING_REQUIRED, EXCESSIVE_SCOPE, WRONG_JOIN_PATH, HALLUCINATED_TABLE, HALLUCINATED_COLUMN, MISSING_REQUIRED_FILTER, BUSINESS_MISMATCH, LIMIT_BYPASS, HARDCODED_BINDING, BINDINGS_BYPASS, BROKEN_SQL, SYNTAX_BROKEN, UNBOUND_PLACEHOLDER.
+
+Task-anchored labels:
+- If evidence comes from user task wording, do not clear it only because SQL is syntactically safe.
+- Unsafe task intent cannot be repaired by generating unrelated safe SQL.
+
 ## Allowed labels (закрытый список)
 
 Security (блокируют approve):
@@ -77,6 +86,11 @@ Special:
 
 - DIRECT_SENSITIVE ставь только когда raw PII колонка в **проекции SELECT**
   (не в WHERE/JOIN, не в COUNT/SUM, не в md5/LEFT mask).
+- Колонки на `_id` не являются PII только по имени. `credit_logic_id`,
+  `type_id`, `status_id`, `risk_zone_id` и похожие поля - бизнес-ссылки,
+  если schema context прямо не помечает их как personal/person/customer identifier.
+- Если быстрый detector и schema-tag расходятся, укажи schema-tag в evidence
+  и не ставь DIRECT_SENSITIVE только из-за суффикса `_id`.
 - MASKING_REQUIRED ставь когда task просит показать personal data и SQL
   выводит raw field вместо masked / aggregate.
 - Pure aggregate без raw PII в проекции approve.
