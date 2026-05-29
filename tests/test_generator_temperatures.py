@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from pathlib import Path
 import time
 
@@ -326,3 +327,34 @@ def test_invalid_temperature_env_falls_back_with_trace_warning(monkeypatch) -> N
     assert client.calls == [0.5, 0.5]
     assert gen.last_call["temperature_schedule"] == [0.5, 0.5]
     assert gen.last_call["temperature_config_error"]["type"] == "temperature_config_error"
+
+
+def test_generator_revision_feedback_rewrites_repeat_sql(monkeypatch) -> None:
+    sql = "SELECT id FROM sys_employee ORDER BY id LIMIT 100"
+    client = FakeClient(texts=[sql])
+    previous = hashlib.sha256(sql.encode("utf-8")).hexdigest()
+    monkeypatch.setenv("LLM_MULTI_CANDIDATE", "false")
+    monkeypatch.setattr(llm_provider, "get_llm", lambda role: client)
+
+    gen = generator_module.SQLGenerator(db_schema={})
+    out = gen.generate(
+        "Покажи сотрудников",
+        sql_history=[sql],
+        audit_feedback=None,
+        iteration=2,
+        generation_context="sys_employee(id)",
+        allowed_objects="sys_employee(id)",
+        revision_feedback={
+            "failed_labels": ["BROKEN_SQL"],
+            "evidence_span": [],
+            "forbidden_identifiers": [],
+            "required_repair": ["BROKEN_SQL: Fix SQL."],
+            "original_intent": "row_level",
+            "explain_error": "same SQL",
+            "previous_sql_sha256": previous,
+        },
+    )
+
+    assert out == "SELECT 'INSUFFICIENT_CONTEXT' AS reason, 'repeat_risk' AS message;"
+    assert gen.last_call["repeat_risk_rewrites"] == 1
+    assert "STRUCTURED_FAILED_CONSTRAINTS" in gen.last_call["prompt_user"]

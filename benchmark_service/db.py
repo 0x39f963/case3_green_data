@@ -85,6 +85,7 @@ PIPELINE_RUN_COLUMNS = [
     "approved",
     "needs_human",
     "human_reason",
+    "abstain_reason",
     "iterations_used",
     "overall_risk_score",
     "duration_sec",
@@ -422,7 +423,7 @@ def list_runs(benchmark_run_id: str | None = None, limit: int = 100) -> dict[str
     select_cols = (
         "trace_id, benchmark_run_id, case_id, model_key, decision, "
         "approved, needs_human, duration_sec, created_at, "
-        "policy_label, security_risk_score, quality_risk_score, refusal_message"
+        "policy_label, abstain_reason, security_risk_score, quality_risk_score, refusal_message"
     )
     with connect() as conn:
         if benchmark_run_id:

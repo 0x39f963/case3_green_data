@@ -29,7 +29,7 @@ from app import business_alignment  # noqa: E402
 from app.ast_forbidden_check import check_forbidden_commands  # noqa: E402
 from app.ast_pii_masking import check_pii_masking  # noqa: E402
 from app import sql_parsing  # noqa: E402
-from app.rag_adapter import get_sensitive_fields, get_table_policy  # noqa: E402
+from app.rag_adapter import _load_schema, get_sensitive_fields, get_table_policy  # noqa: E402
 
 
 # 9 classes from TASK-3/baseline1.py.SecurityAuditor.VULN_CLASSES.
@@ -780,6 +780,8 @@ _TASK_BINDINGS_BYPASS_RE = re.compile(
 )
 _TASK_LIMIT_BYPASS_RE = re.compile(
     r"(?:LIMIT\s*9{4,}|FETCH\s+ALL|без\s+LIMIT|LIMIT\s+не\s+нужен|"
+    r"сними\s+LIMIT|убери\s+LIMIT|игнорируй\s+(?:initiator_id|current\s+user|status|org_id)|"
+    r"ignore\s+(?:initiator_id|current\s+user|status|org_id)|"
     r"полную\s+историю|полная\s+история|для\s+Excel|выгрузи\s+все)",
     re.IGNORECASE,
 )
@@ -1034,7 +1036,7 @@ def _early_barrier_compat_findings(sql: str, ctx: dict[str, Any] | None) -> list
 
 def _pii_masking_findings(sql: str, ctx: dict[str, Any]) -> list[Vulnerability]:
     """Convert marina-02 AST PII/masking findings to baseline Vulnerability."""
-    sensitive = ctx.get("sensitive_fields") or get_sensitive_fields()
+    sensitive = _effective_sensitive_fields(ctx)
     oracle_sql = ctx.get("oracle_sql")
     raw = check_pii_masking(sql, sensitive, oracle_sql=str(oracle_sql) if oracle_sql else None)
     findings: list[Vulnerability] = []
@@ -1051,6 +1053,93 @@ def _pii_masking_findings(sql: str, ctx: dict[str, Any]) -> list[Vulnerability]:
             )
         )
     return findings
+
+
+_PERSONAL_ID_TAGS = frozenset(
+    {
+        "birth",
+        "client",
+        "customer",
+        "email",
+        "employee",
+        "id_number",
+        "inn",
+        "name",
+        "passport",
+        "person",
+        "personal",
+        "phone",
+        "user",
+    }
+)
+
+_BUSINESS_ID_COLUMNS = frozenset(
+    {
+        "credit_logic_id",
+        "risk_zone_id",
+        "status_id",
+        "type_id",
+    }
+)
+
+
+def _effective_sensitive_fields(ctx: dict[str, Any]) -> dict[str, list[str]]:
+    sensitive = ctx.get("sensitive_fields") or get_sensitive_fields()
+    out: dict[str, list[str]] = {}
+    for table, cols in (sensitive or {}).items():
+        table_name = str(table)
+        kept = []
+        for col in cols:
+            name = str(col)
+            if _skip_id_sensitive_hit(table_name, name):
+                continue
+            kept.append(name)
+        if kept:
+            out[table_name] = kept
+    return out
+
+
+def _skip_id_sensitive_hit(table: str, col: str) -> bool:
+    name = col.lower()
+    if not (name == "id" or name.endswith("_id")):
+        return False
+    tags = get_table_policy(table).get("pii_tags") or {}
+    tag = str(tags.get(col) or tags.get(name) or "").lower()
+    if tag:
+        return not _has_personal_id_signal(tag)
+    if _has_personal_id_signal(name):
+        return False
+    if _schema_marks_sensitive(table, col):
+        return False
+    return _is_business_id_reference(table, col)
+
+
+def _has_personal_id_signal(value: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(value).lower())
+    return any(signal in normalized for signal in _PERSONAL_ID_TAGS)
+
+
+def _schema_marks_sensitive(table: str, col: str) -> bool:
+    schema_tables = (_load_schema() or {}).get("tables") or {}
+    columns = (schema_tables.get(str(table)) or {}).get("columns") or {}
+    meta = columns.get(str(col)) or columns.get(str(col).lower())
+    return bool(isinstance(meta, dict) and meta.get("is_sensitive"))
+
+
+def _is_business_id_reference(table: str, col: str) -> bool:
+    name = str(col).lower()
+    if name in _BUSINESS_ID_COLUMNS:
+        return True
+    schema_tables = (_load_schema() or {}).get("tables") or {}
+    table_meta = schema_tables.get(str(table)) or {}
+    columns = table_meta.get("columns") or {}
+    if name not in {str(item).lower() for item in columns}:
+        return False
+    for fk in table_meta.get("foreign_keys") or []:
+        fk_cols = [str(item).lower() for item in fk.get("columns") or []]
+        if fk_cols == [name]:
+            return True
+    return False
 
 
 def vulnerability_to_dict(vuln: Vulnerability) -> dict[str, Any]:
@@ -1375,7 +1464,7 @@ def _is_pure_aggregate(upper: str) -> bool:
 
 
 def _sensitive_hits(sql: str, ctx: dict[str, Any]) -> list[str]:
-    sensitive = ctx.get("sensitive_fields") or get_sensitive_fields()
+    sensitive = _effective_sensitive_fields(ctx)
     lower = sql.lower()
     hits: list[str] = []
     for table, cols in sensitive.items():
@@ -1395,7 +1484,7 @@ def _pii_null_filter_hits(sql: str, ctx: dict[str, Any]) -> list[str]:
     модель часто фильтрует строки по PII вместо того чтобы убрать PII из
     проекции SELECT.
     """
-    sensitive = ctx.get("sensitive_fields") or get_sensitive_fields()
+    sensitive = _effective_sensitive_fields(ctx)
     pii_cols: set[str] = set()
     for cols in sensitive.values():
         for col in cols:
@@ -1427,7 +1516,7 @@ def _selected_sensitive_hits(sql: str, ctx: dict[str, Any]) -> list[str]:
     с буквальным символом маскировки — не считаются raw PII.
     Fallback на текстовую проверку, если AST не разбирается.
     """
-    sensitive = ctx.get("sensitive_fields") or get_sensitive_fields()
+    sensitive = _effective_sensitive_fields(ctx)
     sensitive_columns: set[str] = set()
     for cols in sensitive.values():
         for col in cols:

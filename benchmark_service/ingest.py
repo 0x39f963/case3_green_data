@@ -93,6 +93,7 @@ def _pipeline_run(
         "approved": approved,
         "needs_human": _bool(metadata.get("needs_human")),
         "human_reason": _text(metadata.get("human_reason")),
+        "abstain_reason": _text(metadata.get("abstain_reason")),
         "iterations_used": _int(_first(system_result.get("iterations_used"), trace_result.get("iterations_used"))),
         "overall_risk_score": _num(
             _first(system_result.get("overall_risk_score"), trace_result.get("overall_risk_score"), report_data.get("risk_score"))

@@ -32,6 +32,24 @@ _OVERLAY_PATH = _REPO_ROOT / "deploy" / "schema_overlay_v2.json"
 _OVERLAY_PATH_LEGACY = _REPO_ROOT / "deploy" / "schema_overlay.json"
 _OVERLAY_SCHEMA_PATH = _REPO_ROOT / "deploy" / "schema_overlay.schema.v2.json"
 _OVERLAY_SCHEMA_PATH_LEGACY = _REPO_ROOT / "deploy" / "schema_overlay.schema.json"
+_JOIN_RECIPES_PATH = _REPO_ROOT / "deploy" / "join_recipes.json"
+_PERSONAL_PII_TAG_SIGNALS = frozenset(
+    {
+        "birth",
+        "client",
+        "customer",
+        "email",
+        "employee",
+        "id_number",
+        "inn",
+        "name",
+        "passport",
+        "person",
+        "personal",
+        "phone",
+        "user",
+    }
+)
 if str(_MARINA_ROOT) not in sys.path:
     sys.path.insert(0, str(_MARINA_ROOT))
 
@@ -220,7 +238,30 @@ def _load_overlay() -> dict[str, Any]:
     return {}
 
 
-def _join_generation_context(raw: str, overlay_text: str, v2_text: str) -> tuple[str, dict[str, int]]:
+@lru_cache(maxsize=1)
+def _load_join_recipes() -> dict[str, Any]:
+    """Read vetted short join recipes for generation grounding."""
+    try:
+        data = json.loads(_JOIN_RECIPES_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"recipes": []}
+    recipes = data.get("recipes")
+    if not isinstance(recipes, list):
+        return {"recipes": []}
+    return data
+
+
+def _has_personal_pii_tag(value: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(value).lower())
+    return any(signal in normalized for signal in _PERSONAL_PII_TAG_SIGNALS)
+
+
+def _join_generation_context(
+    raw: str,
+    overlay_text: str,
+    v2_text: str,
+    recipe_text: str = "",
+) -> tuple[str, dict[str, int]]:
     """
     Собрать prompt context с защищенным v2-бюджетом.
 
@@ -230,6 +271,8 @@ def _join_generation_context(raw: str, overlay_text: str, v2_text: str) -> tuple
     items: list[tuple[str, str]] = []
     if v2_text:
         items.append(("table_knowledge_v2", v2_text))
+    if recipe_text:
+        items.append(("join_recipes", recipe_text))
     if overlay_text:
         items.append(("schema_overlay", "=== BUSINESS OVERLAY ===\n" + overlay_text))
     if raw:
@@ -238,6 +281,7 @@ def _join_generation_context(raw: str, overlay_text: str, v2_text: str) -> tuple
     parts: list[str] = []
     source_chars = {
         "table_knowledge_v2": 0,
+        "join_recipes": 0,
         "schema_overlay": 0,
         "legacy_faiss": 0,
     }
@@ -273,8 +317,14 @@ def get_generation_context_bundle(task: str) -> dict[str, Any]:
     v2_text, v2_meta = get_table_knowledge_v2_context_with_meta(task)
     link_seed = "\n\n".join(item for item in (v2_text, raw) if item)
     link = schema_link(task, link_seed)
+    recipe_text, recipe_meta = _format_join_recipe_cards(task, link["allowed_tables"])
+    recipe_tables: list[str] = []
+    for item in recipe_meta:
+        recipe_tables.extend(str(name) for name in item.get("tables") or [])
+    if recipe_tables:
+        link = _extend_schema_link(link, recipe_tables)
     overlay_text = _format_overlay_blocks(link["allowed_tables"], task=task)
-    context, source_chars = _join_generation_context(raw, overlay_text, v2_text)
+    context, source_chars = _join_generation_context(raw, overlay_text, v2_text, recipe_text)
 
     v2_enabled = bool(v2_meta.get("enabled"))
     v2_has_hits = int(v2_meta.get("hit_count") or 0) > 0
@@ -306,9 +356,16 @@ def get_generation_context_bundle(task: str) -> dict[str, Any]:
                 "table_count": len(overlay_tables),
                 "context_chars": source_chars["schema_overlay"],
             },
+            "join_recipes": {
+                "used": bool(recipe_text),
+                "recipe_count": len(recipe_meta),
+                "context_chars": source_chars["join_recipes"],
+                "recipes": recipe_meta,
+            },
         },
         "source_context_chars": source_chars,
         "table_knowledge_v2_context": v2_text,
+        "join_recipe_context": recipe_text,
         "schema_overlay_context": overlay_text,
         "legacy_faiss_context": raw,
     }
@@ -492,7 +549,14 @@ def get_sensitive_fields() -> dict[str, list[str]]:
     not_pii = sensitive_detector.not_pii_allowlist()
     if not_pii:
         for table in list(data.keys()):
-            cols = [col for col in data.get(table, []) if str(col).lower() not in not_pii]
+            tags = (overlay_tables.get(table) or {}).get("pii_tags") or {}
+            cols = []
+            for col in data.get(table, []):
+                name = str(col)
+                tag = str(tags.get(name) or tags.get(name.lower()) or "")
+                if name.lower() in not_pii and not _has_personal_pii_tag(tag):
+                    continue
+                cols.append(name)
             if cols:
                 data[table] = sorted(cols)
             else:
@@ -622,6 +686,188 @@ def _short_text(text: str, limit: int) -> str:
     return value[: max(0, limit - 3)].rstrip() + "..."
 
 
+def _short_type(raw: str) -> str:
+    value = " ".join(str(raw or "").split()).lower()
+    value = value.replace("character varying", "varchar")
+    value = value.replace("timestamp without time zone", "timestamp")
+    value = value.replace("timestamp with time zone", "timestamptz")
+    return _short_text(value, 32) or "unknown"
+
+
+def _schema_table(table_name: str) -> dict[str, Any]:
+    item = (_load_schema().get("tables") or {}).get(_base_name(table_name)) or {}
+    return item if isinstance(item, dict) else {}
+
+
+def _schema_columns(table_name: str) -> dict[str, Any]:
+    cols = _schema_table(table_name).get("columns") or {}
+    return cols if isinstance(cols, dict) else {}
+
+
+def _fk_targets(table_name: str) -> dict[str, str]:
+    targets: dict[str, str] = {}
+    table = _schema_table(table_name)
+    for item in table.get("foreign_keys") or []:
+        if not isinstance(item, dict):
+            continue
+        cols = [str(col) for col in item.get("columns") or [] if str(col)]
+        ref_table = str(item.get("references_table") or "")
+        ref_cols = [str(col) for col in item.get("references_columns") or [] if str(col)]
+        if not cols or not ref_table:
+            continue
+        ref_col = ref_cols[0] if ref_cols else "id"
+        for col in cols:
+            targets[col] = ref_table + "." + ref_col
+    return targets
+
+
+def _enum_codes_from_text(text: str) -> str:
+    pairs = []
+    for number, label in re.findall(r"(-?\d+)\s*=\s*([^,.;]+)", text or ""):
+        label = _short_text(label, 34).strip()
+        if label:
+            pairs.append(number + "=" + label)
+        if len(pairs) >= 4:
+            break
+    return ", ".join(pairs)
+
+
+def _column_type_hint(
+    name: str,
+    schema_col: dict[str, Any],
+    overlay_col: dict[str, Any],
+    fk_target: str = "",
+) -> str:
+    col_type = _short_type(str(schema_col.get("type") or ""))
+    details: list[str] = []
+    desc = str(overlay_col.get("description") or schema_col.get("comment") or "")
+    codes = _enum_codes_from_text(desc)
+    if name == "is_system":
+        details.append("0/1")
+    if codes:
+        details.append("codes: " + codes)
+    if fk_target:
+        details.append("FK->" + fk_target)
+    elif name.endswith("_id") and name != "id":
+        details.append("FK-like id")
+    if not details and (overlay_col.get("category") == "status" or name in {"status", "state"}):
+        details.append("numeric code, not text/boolean")
+    suffix = " (" + "; ".join(details[:2]) + ")" if details else ""
+    return name + " " + col_type + suffix
+
+
+def _format_type_hints(table_name: str, overlay_item: dict[str, Any], task: str, limit: int = 12) -> list[str]:
+    schema_cols = _schema_columns(table_name)
+    if not schema_cols:
+        return []
+    overlay_cols = overlay_item.get("columns") or {}
+    if not isinstance(overlay_cols, dict):
+        overlay_cols = {}
+    fk_targets = _fk_targets(table_name)
+    task_tokens = _text_tokens(task)
+    rows: list[tuple[int, int, str]] = []
+    for idx, (name, raw_schema_col) in enumerate(schema_cols.items()):
+        if not isinstance(raw_schema_col, dict):
+            continue
+        col = str(name)
+        overlay_col = overlay_cols.get(col) if isinstance(overlay_cols.get(col), dict) else {}
+        category = str(overlay_col.get("category") or "")
+        important = (
+            col == "id"
+            or col.endswith("_id")
+            or col in {"status", "state", "is_system"}
+            or category in {"status", "key", "filter"}
+        )
+        if not important:
+            continue
+        score = _column_score(col, overlay_col, task_tokens) if overlay_col else 0
+        if col in {"status", "state", "is_system"}:
+            score += 20
+        elif category == "status":
+            score += 6
+        if col in fk_targets:
+            score += 18
+        if col.endswith("_id"):
+            score += 2
+        rows.append((score, idx, _column_type_hint(col, raw_schema_col, overlay_col, fk_targets.get(col, ""))))
+    rows.sort(key=lambda row: (-row[0], row[1], row[2]))
+    return [text for _, _, text in rows[:limit]]
+
+
+def _recipe_trigger_hits(recipe: dict[str, Any], task: str, task_tokens: set[str]) -> int:
+    text = (task or "").lower()
+    hits = 0
+    for raw in recipe.get("triggers") or []:
+        token = str(raw).strip().lower()
+        if not token:
+            continue
+        if token in task_tokens or token in text:
+            hits += 1
+    return hits
+
+
+def _matched_join_recipes(task: str, table_names: list[str], limit: int = 3) -> list[dict[str, Any]]:
+    recipes = _load_join_recipes().get("recipes") or []
+    if not isinstance(recipes, list):
+        return []
+    allowed = {_base_name(name) for name in table_names}
+    task_tokens = _text_tokens(task)
+    scored: list[tuple[int, str, dict[str, Any]]] = []
+    for recipe in recipes:
+        if not isinstance(recipe, dict):
+            continue
+        tables = {_base_name(name) for name in recipe.get("tables") or []}
+        overlap = len(tables & allowed)
+        trigger_hits = _recipe_trigger_hits(recipe, task, task_tokens)
+        if trigger_hits < 2 and overlap < 2:
+            continue
+        score = trigger_hits + overlap * 2
+        scored.append((score, str(recipe.get("id") or ""), recipe))
+    scored.sort(key=lambda row: (-row[0], row[1]))
+    return [recipe for _, _, recipe in scored[:limit]]
+
+
+def _format_join_recipe_cards(task: str, table_names: list[str]) -> tuple[str, list[dict[str, Any]]]:
+    recipes = _matched_join_recipes(task, table_names)
+    if not recipes:
+        return "", []
+    lines = ["=== JOIN RECIPES (vetted short cards) ==="]
+    meta: list[dict[str, Any]] = []
+    for recipe in recipes:
+        recipe_id = str(recipe.get("id") or "")
+        title = str(recipe.get("title") or recipe_id)
+        tables = [str(name) for name in recipe.get("tables") or [] if str(name)]
+        joins = [str(item) for item in recipe.get("joins") or [] if str(item)]
+        notes = [str(item) for item in recipe.get("notes") or [] if str(item)]
+        lines.append("- " + title)
+        if tables:
+            lines.append("  tables: " + ", ".join(tables[:6]))
+        if joins:
+            lines.append("  joins: " + "; ".join(joins[:5]))
+        if notes:
+            lines.append("  notes: " + "; ".join(notes[:2]))
+        meta.append({"id": recipe_id, "title": title, "tables": tables})
+    return "\n".join(lines), meta
+
+
+def _extend_schema_link(link: dict[str, Any], extra_tables: list[str]) -> dict[str, Any]:
+    tables = _load_schema().get("tables") or {}
+    selected = list(link.get("allowed_tables") or [])
+    for name in extra_tables:
+        base = _base_name(name)
+        if base in tables and base not in selected:
+            selected.append(base)
+    allowed_columns = {
+        name: list((tables.get(name) or {}).get("columns") or {})
+        for name in selected
+    }
+    return {
+        "allowed_tables": selected,
+        "allowed_columns": allowed_columns,
+        "allowed_objects": format_allowed_objects(allowed_columns),
+    }
+
+
 def _format_column_line(name: str, item: dict[str, Any]) -> str:
     desc = _short_text(str(item.get("description") or ""), 220)
     category = str(item.get("category") or "unknown")
@@ -697,8 +943,6 @@ def _format_overlay_blocks(table_names: list[str], task: str = "") -> str:
     tables = overlay.get("tables") or {}
     parts: list[str] = []
     matched_columns = _format_matched_column_overlay(table_names, tables, task)
-    if matched_columns:
-        parts.append("Matched overlay v2 columns:\n" + "\n".join(matched_columns))
     for name in table_names:
         item = tables.get(_base_name(name))
         if not item:
@@ -711,11 +955,16 @@ def _format_overlay_blocks(table_names: list[str], task: str = "") -> str:
             + "Allowed ops: " + ", ".join(item.get("allowed_ops") or ["SELECT"]) + "\n"
             + "PII tags: " + json.dumps(item.get("pii_tags") or {}, ensure_ascii=False)
         )
+        type_hints = _format_type_hints(_base_name(name), item, task)
+        if type_hints:
+            block += "\nType hints:\n- " + "\n- ".join(type_hints)
         column_limit = 8 if task else 16
         column_lines = _format_column_overlay(item.get("columns") or {}, task, limit=column_limit)
         if column_lines:
             block += "\nКолонки overlay v2:\n" + "\n".join(column_lines)
         parts.append(block)
+    if matched_columns:
+        parts.append("Matched overlay v2 columns:\n" + "\n".join(matched_columns))
     return "\n\n".join(parts)
 
 

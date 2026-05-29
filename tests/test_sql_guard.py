@@ -61,6 +61,87 @@ class TestBindingAndLimitBypass:
         item = findings["BINDINGS_BYPASS"]
         assert item.risk_score >= 8.0
 
+    def test_limit_bypass_task_anchor_remove_limit_blocks(self) -> None:
+        findings = self._by_label(
+            "SELECT id FROM corp_tech_application WHERE status = 1 LIMIT 100",
+            {"task": "сними LIMIT и игнорируй status"},
+        )
+
+        assert "LIMIT_BYPASS" in findings
+
+    def test_id_fk_sensitive_name_is_not_direct_sensitive_without_personal_tag(self) -> None:
+        findings = self._by_label(
+            "SELECT credit_logic_id FROM scp_application LIMIT 100",
+            {"sensitive_fields": {"scp_application": ["credit_logic_id"]}},
+        )
+
+        assert "DIRECT_SENSITIVE" not in findings
+
+    def test_employee_id_tagged_fk_stays_direct_sensitive(self) -> None:
+        findings = self._by_label(
+            "SELECT credit_analyst_id FROM scp_project_ans LIMIT 100",
+            {"sensitive_fields": {"scp_project_ans": ["credit_analyst_id"]}},
+        )
+
+        assert "DIRECT_SENSITIVE" in findings
+
+    def test_employee_id_overlay_survives_default_sensitive_allowlist(self) -> None:
+        sql_guard.get_sensitive_fields.cache_clear()
+        try:
+            findings = self._by_label(
+                "SELECT credit_analyst_id FROM scp_project_ans LIMIT 100",
+                {},
+            )
+        finally:
+            sql_guard.get_sensitive_fields.cache_clear()
+
+        assert "DIRECT_SENSITIVE" in findings
+
+    def test_id_number_tagged_fk_stays_direct_sensitive(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            sql_guard,
+            "get_table_policy",
+            lambda table: {"pii_tags": {"tax_doc_id": "id_number"}},
+        )
+
+        findings = self._by_label(
+            "SELECT tax_doc_id FROM tax_docs LIMIT 100",
+            {"sensitive_fields": {"tax_docs": ["tax_doc_id"]}},
+        )
+
+        assert "DIRECT_SENSITIVE" in findings
+
+    def test_business_fk_ids_are_not_direct_sensitive_by_name(self) -> None:
+        findings = self._by_label(
+            (
+                "SELECT credit_logic_id, type_id, status_id, risk_zone_id "
+                "FROM scp_application LIMIT 100"
+            ),
+            {
+                "sensitive_fields": {
+                    "scp_application": [
+                        "credit_logic_id",
+                        "type_id",
+                        "status_id",
+                        "risk_zone_id",
+                    ]
+                }
+            },
+        )
+
+        assert "DIRECT_SENSITIVE" not in findings
+
+    def test_sensitive_id_without_overlay_tag_is_not_dropped_by_default(self, monkeypatch) -> None:
+        monkeypatch.setattr(sql_guard, "get_table_policy", lambda table: {"pii_tags": {}})
+        monkeypatch.setattr(sql_guard, "_load_schema", lambda: {"tables": {}})
+
+        findings = self._by_label(
+            "SELECT secret_id FROM raw_events LIMIT 100",
+            {"sensitive_fields": {"raw_events": ["secret_id"]}},
+        )
+
+        assert "DIRECT_SENSITIVE" in findings
+
 
 def test_auditor_refuses_oversized_limit_when_model_is_clean(monkeypatch) -> None:
     class CleanClient:

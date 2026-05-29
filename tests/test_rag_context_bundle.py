@@ -110,3 +110,34 @@ def test_schema_link_keeps_v2_table_before_legacy_context() -> None:
     link = rag_adapter.schema_link("покажи сотрудников", context)
 
     assert link["allowed_tables"][:2] == ["sys_employee", "offices_psb"]
+
+
+def test_generation_context_adds_type_hints_for_status_and_fk(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TABLE_KNOWLEDGE_V2_ENABLED", "false")
+    monkeypatch.setattr(
+        rag_adapter.rag_tools,
+        "get_generation_context",
+        lambda task: "Таблица: scp_application\nОписание: legacy context",
+    )
+
+    text = rag_adapter.get_generation_context("Покажи заявки клиентов по сегменту и статусу")
+
+    assert "Type hints:" in text
+    assert "status smallint" in text
+    assert "initiator_id bigint (FK->sys_company.id)" in text
+    assert "scp_business_segment bigint (FK->business_segment.id)" in text
+
+
+def test_generation_context_adds_vetted_join_recipe(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TABLE_KNOWLEDGE_V2_ENABLED", "false")
+    monkeypatch.setattr(
+        rag_adapter.rag_tools,
+        "get_generation_context",
+        lambda task: "Таблица: scp_application\nОписание: legacy context",
+    )
+
+    text = rag_adapter.get_generation_context("Топ клиентов по сумме кредитов и сегменту")
+
+    assert "=== JOIN RECIPES (vetted short cards) ===" in text
+    assert "top clients by amount + segment" in text
+    assert "credit_contract.link_customer_id = sys_company.id" in text

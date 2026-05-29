@@ -15,6 +15,8 @@ import sys
 import time
 import os
 import re
+import hashlib
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypedDict
@@ -59,6 +61,8 @@ class PipelineState(TypedDict, total=False):
     last_guard_findings: list[Vulnerability]
     last_generation_context: str
     last_solutions_context: str
+    last_revision_feedback: dict[str, Any]
+    failure_signatures: list[str]
     isolation_mode: str
     allowed_tables: list[str]
     allowed_columns: dict[str, list[str]]
@@ -67,6 +71,7 @@ class PipelineState(TypedDict, total=False):
     decision: str
     needs_human: bool
     human_reason: str
+    abstain_reason: str
     policy_label: str
     policy_message: str
     early_barrier_blocked: bool
@@ -106,6 +111,133 @@ def _strict_overlay_enabled() -> bool:
     if not raw:
         return _STRICT_OVERLAY_DEFAULT
     return raw in {"1", "true", "yes", "on"}
+
+
+def _sql_sha256(sql: str) -> str:
+    return hashlib.sha256((sql or "").strip().encode("utf-8")).hexdigest()
+
+
+def _clean_signature_text(text: str, limit: int = 160) -> str:
+    value = " ".join(str(text or "").lower().split())
+    return value[:limit]
+
+
+def _vuln_label(vuln: Vulnerability) -> str:
+    return str(getattr(vuln, "vuln_class", "") or "")
+
+
+def _critical_labels(audit: AuditResult | None) -> list[str]:
+    if audit is None:
+        return []
+    labels: set[str] = set()
+    for vuln in audit.vulnerabilities:
+        label = _vuln_label(vuln)
+        if not label:
+            continue
+        score = float(getattr(vuln, "risk_score", 0.0) or 0.0)
+        if sql_guard.label_bucket(label) == "security" or score >= 6.0:
+            labels.add(label)
+    if not labels:
+        labels = {_vuln_label(v) for v in audit.vulnerabilities if _vuln_label(v)}
+    return sorted(labels)
+
+
+def _failure_signature(state: PipelineState, audit: AuditResult | None) -> dict[str, Any]:
+    labels = _critical_labels(audit)
+    forbidden = set(state.get("banned_identifiers", []) or [])
+    if audit is not None:
+        forbidden |= _hallucinated_identifiers(audit)
+    explain_error = _clean_signature_text(str(state.get("last_explain_error") or ""))
+    if not labels and not forbidden and not explain_error:
+        return {}
+    return {
+        "labels": labels,
+        "explain_error": explain_error,
+        "forbidden_identifiers": sorted(forbidden),
+    }
+
+
+def _failure_signature_key(signature: dict[str, Any]) -> str:
+    if not signature:
+        return ""
+    return json.dumps(signature, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+
+
+def _evidence_spans(audit: AuditResult | None) -> list[str]:
+    if audit is None:
+        return []
+    spans: list[str] = []
+    for vuln in audit.vulnerabilities:
+        span = str(getattr(vuln, "evidence_span", "") or getattr(vuln, "description", "") or "")
+        span = " ".join(span.split())
+        if span and span not in spans:
+            spans.append(span[:240])
+        if len(spans) >= 6:
+            break
+    return spans
+
+
+def _required_repairs(audit: AuditResult | None) -> list[str]:
+    if audit is None:
+        return []
+    repairs: list[str] = []
+    for vuln in sorted(
+        audit.vulnerabilities,
+        key=lambda item: float(getattr(item, "risk_score", 0.0) or 0.0),
+        reverse=True,
+    ):
+        label = _vuln_label(vuln)
+        note = str(getattr(vuln, "revision_note", "") or getattr(vuln, "recommendation", "") or "")
+        if label and note:
+            repairs.append(label + ": " + note[:240])
+        elif label:
+            repairs.append(label)
+        if len(repairs) >= 6:
+            break
+    return repairs
+
+
+def _original_intent(state: PipelineState) -> str:
+    kind = str(state.get("intent_kind", "") or "")
+    if kind == intent_classifier.INTENT_AGGREGATE_SAFE:
+        return "aggregate"
+    if kind == intent_classifier.INTENT_ROW_LEVEL_BUSINESS:
+        return "row_level"
+    if kind == intent_classifier.INTENT_TOP_N:
+        return "top_n"
+    if kind == intent_classifier.INTENT_REFUSAL_REQUIRED:
+        return "refusal"
+    if kind == intent_classifier.INTENT_MASK_REQUIRED:
+        return "row_level"
+    task = state.get("task", "")
+    if re.search(r"\bgroup\s+by\b|группир", task, re.IGNORECASE):
+        return "group_by"
+    return kind or "unknown"
+
+
+def _build_revise_feedback(state: PipelineState, audit: AuditResult | None) -> dict[str, Any]:
+    sql = state.get("last_sql", "")
+    forbidden = set(state.get("banned_identifiers", []) or [])
+    if audit is not None:
+        forbidden |= _hallucinated_identifiers(audit)
+    return {
+        "failed_labels": _critical_labels(audit),
+        "evidence_span": _evidence_spans(audit),
+        "forbidden_identifiers": sorted(forbidden),
+        "required_repair": _required_repairs(audit),
+        "original_intent": _original_intent(state),
+        "explain_error": str(state.get("last_explain_error") or ""),
+        "previous_sql_sha256": _sql_sha256(sql) if sql else "",
+    }
+
+
+def _failure_abstain_reason(state: PipelineState, audit: AuditResult | None) -> str:
+    labels = set(_critical_labels(audit))
+    if state.get("last_explain_error"):
+        return "explain_fail"
+    if labels & {"BROKEN_SQL", "SYNTAX_BROKEN", "UNBOUND_PLACEHOLDER", "HALLUCINATED_TABLE", "HALLUCINATED_COLUMN", "SCHEMA_OVERLAY_MISSING", "WRONG_JOIN_PATH"}:
+        return "generator_fail"
+    return "low_confidence"
 
 
 def _prompt_blocking_findings(state: PipelineState) -> list[Vulnerability]:
@@ -425,6 +557,7 @@ def _node_generate(state: PipelineState) -> PipelineState:
                     solutions_context=state.get("last_solutions_context", ""),
                     banned_identifiers=banned_identifiers,
                     intent_block=intent_block,
+                    revision_feedback=state.get("last_revision_feedback", {}),
                 )
                 candidates = generated if isinstance(generated, list) else [generated]
                 original_candidate_count = len(candidates)
@@ -813,6 +946,7 @@ def _node_decide(state: PipelineState) -> PipelineState:
     has_uncertain_internal = bool(internal_labels & {"AUDIT_UNCERTAIN"})
     repeat_stop_reason = _repeat_stop_reason(state, audit)
     max_iter_unresolved = iteration >= max_iter and not approved
+    abstain_reason = ""
     task_anchored_security_findings = [
         v
         for v in vulns
@@ -830,6 +964,7 @@ def _node_decide(state: PipelineState) -> PipelineState:
             + (" — " + state.get("policy_message", "") if state.get("policy_message") else "")
         )
         policy_label = sentinel_kind
+        abstain_reason = "generator_fail" if sentinel_kind == _POLICY_INSUFFICIENT_CONTEXT else "correct_block"
     elif approved:
         decision = "approve"
         needs_human = False
@@ -840,16 +975,19 @@ def _node_decide(state: PipelineState) -> PipelineState:
         needs_human = False
         human_reason = "prompt-risk заблокирован precheck"
         policy_label = _POLICY_PROMPT_BLOCKED
+        abstain_reason = "correct_block"
     elif early_barrier:
         decision = "abstain"
         needs_human = False
         human_reason = "ранний AST-барьер: " + ", ".join(state.get("early_barrier_labels", []))
         policy_label = _POLICY_HARD_FAIL
+        abstain_reason = "generator_fail"
     elif task_anchored_security:
         decision = "refuse"
         needs_human = False
         human_reason = "security attack embedded in task; revise cannot fix"
         policy_label = _POLICY_REFUSAL_REQUIRED
+        abstain_reason = "correct_block"
     elif quality_only_block and not low_judge:
         decision = "approve"
         approved = True
@@ -861,21 +999,25 @@ def _node_decide(state: PipelineState) -> PipelineState:
         needs_human = True
         human_reason = "semantic judge вернул confidence ниже 0.7"
         policy_label = _POLICY_AUDIT_UNCERTAIN
+        abstain_reason = "low_confidence"
     elif has_uncertain_internal:
         decision = "abstain"
         needs_human = True
         human_reason = "internal audit labels: " + ", ".join(sorted(internal_labels))
         policy_label = _POLICY_AUDIT_UNCERTAIN
+        abstain_reason = "low_confidence"
     elif repeat_stop_reason:
         decision = "abstain"
         needs_human = True
         human_reason = repeat_stop_reason
         policy_label = _POLICY_REPEAT_STOP
+        abstain_reason = _failure_abstain_reason(state, audit)
     elif max_iter_unresolved:
         decision = "abstain"
         needs_human = True
         human_reason = "достигнут лимит итераций с unresolved findings"
         policy_label = _POLICY_MAX_ITERATIONS
+        abstain_reason = "max_iter"
     else:
         decision = "revise"
         needs_human = False
@@ -898,11 +1040,13 @@ def _node_decide(state: PipelineState) -> PipelineState:
             "internal_labels": sorted(internal_labels),
             "iteration": iteration,
             "max_iterations": max_iter,
+            "failure_signature": _failure_signature(state, audit),
         },
     ) as event:
         event["outputs"]["decision"] = decision
         event["outputs"]["needs_human"] = needs_human
         event["outputs"]["human_reason"] = human_reason
+        event["outputs"]["abstain_reason"] = abstain_reason
         event["details"]["task_anchored_security_findings"] = [
             {
                 "vuln_class": str(getattr(v, "vuln_class", "")),
@@ -919,6 +1063,7 @@ def _node_decide(state: PipelineState) -> PipelineState:
         "decision": decision,
         "needs_human": needs_human,
         "human_reason": human_reason,
+        "abstain_reason": abstain_reason,
         "policy_label": policy_label,
     }
 
@@ -933,6 +1078,11 @@ def _repeat_stop_reason(state: PipelineState, audit: AuditResult | None) -> str:
 
     if audit is None:
         return ""
+    signature = _failure_signature(state, audit)
+    signature_key = _failure_signature_key(signature)
+    if signature_key and signature_key in set(state.get("failure_signatures", []) or []):
+        labels = ", ".join(signature.get("labels") or [])
+        return "остановлен повтор failure signature: " + (labels or "same_error")
     current = _hallucinated_identifiers(audit)
     if not current:
         return ""
@@ -998,11 +1148,15 @@ def _node_revise(state: PipelineState) -> PipelineState:
     trace = state["trace"]
     audit = state.get("last_audit")
     notes = (audit.summary if audit else "Нет деталей.") or "Нет деталей."
+    feedback = _build_revise_feedback(state, audit)
+    signature_key = _failure_signature_key(_failure_signature(state, audit))
 
     with trace.step("revise", inputs={"iteration": state["iteration"]}) as event:
         event["outputs"]["notes"] = notes
+        event["outputs"]["structured_feedback"] = feedback
 
     log = list(state.get("iterations_log", []))
+    revision_notes = json.dumps(feedback, ensure_ascii=False, sort_keys=True)
     if log:
         last = log[-1]
         log[-1] = IterationLog(
@@ -1010,10 +1164,20 @@ def _node_revise(state: PipelineState) -> PipelineState:
             iteration=last.iteration,
             sql_query=last.sql_query,
             audit_result=last.audit_result,
-            revision_notes=notes,
+            revision_notes=revision_notes,
         )
         audit_storage.save_iteration(trace.request_id, log[-1])
-    return {**state, "iterations_log": log}
+    signatures = list(state.get("failure_signatures", []) or [])
+    if signature_key:
+        signatures.append(signature_key)
+    banned = sorted(set(state.get("banned_identifiers", []) or []) | set(feedback.get("forbidden_identifiers") or []))
+    return {
+        **state,
+        "iterations_log": log,
+        "last_revision_feedback": feedback,
+        "failure_signatures": signatures,
+        "banned_identifiers": banned,
+    }
 
 
 def _route_after_decide(state: PipelineState) -> str:
@@ -1140,6 +1304,8 @@ class SQLSecuritySystem(_BaseSystem):
             "last_guard_findings": [],
             "last_generation_context": "",
             "last_solutions_context": "",
+            "last_revision_feedback": {},
+            "failure_signatures": [],
             "isolation_mode": os.environ.get("PIPELINE_ISOLATION", "production"),
             "allowed_tables": [],
             "allowed_columns": {},
@@ -1148,6 +1314,7 @@ class SQLSecuritySystem(_BaseSystem):
             "decision": "",
             "needs_human": False,
             "human_reason": "",
+            "abstain_reason": "",
             "policy_label": "",
             "policy_message": "",
             "banned_identifiers": [],
@@ -1194,6 +1361,7 @@ class SQLSecuritySystem(_BaseSystem):
         final_sql = internal_final_sql if (approved or is_refusal_policy) else ""
         needs_human = bool(final_state.get("needs_human", False))
         human_reason = final_state.get("human_reason", "")
+        abstain_reason = str(final_state.get("abstain_reason", "") or "")
         if is_sentinel_policy and not human_reason:
             human_reason = (
                 "policy " + policy_label
@@ -1264,6 +1432,7 @@ class SQLSecuritySystem(_BaseSystem):
                 "isolation_mode": final_state.get("isolation_mode", os.environ.get("PIPELINE_ISOLATION", "production")),
                 "needs_human": needs_human,
                 "human_reason": human_reason,
+                "abstain_reason": abstain_reason,
                 "internal_final_sql_len": len(internal_final_sql),
                 "public_sql_hidden": bool(internal_final_sql and not approved and not is_refusal_policy),
                 "quality_advisories": [

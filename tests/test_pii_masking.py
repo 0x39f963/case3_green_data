@@ -187,6 +187,16 @@ def test_empty_sensitive_fields_returns_empty() -> None:
     assert check_pii_masking("SELECT email FROM sys_employee", {}) == []
 
 
+def test_sensitive_id_column_can_be_direct_sensitive() -> None:
+    findings = check_pii_masking(
+        "SELECT credit_analyst_id FROM scp_project_ans",
+        {"scp_project_ans": ["credit_analyst_id"]},
+    )
+
+    assert {f.label for f in findings} == {"DIRECT_SENSITIVE"}
+    assert findings[0].column == "credit_analyst_id"
+
+
 def test_finding_shape() -> None:
     findings = check_pii_masking("SELECT email FROM sys_employee", SENSITIVE)
     assert isinstance(findings[0], Finding)

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import math
 import sys
 import os
@@ -66,6 +67,34 @@ def _summarize_audit(audit: AuditResult | None) -> str:
         for vuln in top:
             parts.append("- " + vuln.vuln_class + ": " + vuln.description + " " + vuln.recommendation)
     return "\n".join(parts).strip()
+
+
+def _format_revision_feedback(feedback: dict[str, Any] | None) -> str:
+    if not feedback:
+        return ""
+    return (
+        "STRUCTURED_FAILED_CONSTRAINTS:\n"
+        + json.dumps(feedback, ensure_ascii=False, sort_keys=True)
+    )
+
+
+def _revision_summary(audit: AuditResult | None, feedback: dict[str, Any] | None) -> str:
+    parts = []
+    structured = _format_revision_feedback(feedback)
+    if structured:
+        parts.append(structured)
+    audit_text = _summarize_audit(audit)
+    if audit_text:
+        parts.append(audit_text)
+    return "\n\n".join(parts).strip()
+
+
+def _sql_sha256(sql: str) -> str:
+    return hashlib.sha256((sql or "").strip().encode("utf-8")).hexdigest()
+
+
+def _repeat_risk_sql() -> str:
+    return "SELECT 'INSUFFICIENT_CONTEXT' AS reason, 'repeat_risk' AS message;"
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -226,6 +255,7 @@ class SQLGenerator(_BaseSQLGenerator):
         task_description: str,
         regular_system_prompt: str,
         regular_user_prompt: str,
+        revision_feedback: dict[str, Any] | None = None,
     ) -> str:
         """
         Phase 5 — agentic tool-loop generation.
@@ -303,6 +333,11 @@ class SQLGenerator(_BaseSQLGenerator):
             })
 
         sql = _strip_markdown(result["final_text"])
+        repeat_rewrites = 0
+        previous_sha = str((revision_feedback or {}).get("previous_sql_sha256") or "")
+        if previous_sha and _sql_sha256(sql) == previous_sha:
+            sql = _repeat_risk_sql()
+            repeat_rewrites = 1
         candidate_details = []
         for item in tool_llm_calls:
             step = int(item.get("step") or 0)
@@ -335,6 +370,8 @@ class SQLGenerator(_BaseSQLGenerator):
             "tool_loop_stop_reason": result["stop_reason"],
             "stop_reason": result["stop_reason"],
             "tool_compliance": result["tool_compliance"],
+            "revision_feedback": revision_feedback or {},
+            "repeat_risk_rewrites": repeat_rewrites,
         }
         del regular_system_prompt  # quiet linter
         return sql
@@ -350,6 +387,7 @@ class SQLGenerator(_BaseSQLGenerator):
         solutions_context: str = "",
         banned_identifiers: list[str] | None = None,
         intent_block: str = "",
+        revision_feedback: dict[str, Any] | None = None,
     ) -> str | list[str]:
         """
         Сгенерировать SQL под текстовую задачу.
@@ -370,6 +408,7 @@ class SQLGenerator(_BaseSQLGenerator):
         system_meta = system_record.meta
 
         banned_list = sorted(set(banned_identifiers or []))
+        revision_feedback = revision_feedback or {}
         banned_block = (
             "BANNED_IDENTIFIERS: " + ", ".join(banned_list)
             + "\n(Эти идентификаторы запрещены полностью: ни в SELECT, ни в FROM/JOIN, ни в WHERE, ни как alias.)"
@@ -403,10 +442,11 @@ class SQLGenerator(_BaseSQLGenerator):
         else:
             template = _load_prompt("generator_user_revision.txt")
             try:
+                audit_summary = _revision_summary(audit_feedback, revision_feedback) or "Без подробностей."
                 user_prompt = template.format(
                     iteration=iteration,
                     prior_sql=sql_history[-1],
-                    audit_summary=_summarize_audit(audit_feedback) or "Без подробностей.",
+                    audit_summary=audit_summary,
                     generation_context=context,
                     allowed_objects=allowed_objects,
                     banned_identifiers=banned_block,
@@ -419,7 +459,7 @@ class SQLGenerator(_BaseSQLGenerator):
                     + template.format(
                         iteration=iteration,
                         prior_sql=sql_history[-1],
-                        audit_summary=_summarize_audit(audit_feedback) or "Без подробностей.",
+                        audit_summary=_revision_summary(audit_feedback, revision_feedback) or "Без подробностей.",
                         generation_context=context,
                         allowed_objects=allowed_objects,
                         banned_identifiers=banned_block,
@@ -436,7 +476,13 @@ class SQLGenerator(_BaseSQLGenerator):
         tool_mode_requested = _env_bool("GENERATOR_TOOL_MODE", False)
         tool_mode_supported = bool(getattr(client, "supports_tools", False))
         if tool_mode_requested and tool_mode_supported and hasattr(client, "invoke"):
-            return self._generate_with_tools(client, task_description, system_prompt, user_prompt)
+            return self._generate_with_tools(
+                client,
+                task_description,
+                system_prompt,
+                user_prompt,
+                revision_feedback=revision_feedback,
+            )
 
         multi = _env_bool("LLM_MULTI_CANDIDATE", True)
         temperatures, temperature_error = _generator_temperatures(multi)
@@ -455,6 +501,17 @@ class SQLGenerator(_BaseSQLGenerator):
             client, system_prompt, user_prompt, temperatures, parallel
         )
         candidates = [_strip_markdown(item.text) for item in responses]
+        previous_sha = str(revision_feedback.get("previous_sql_sha256") or "")
+        repeat_risk_rewrites = 0
+        if previous_sha:
+            updated_candidates = []
+            for candidate in candidates:
+                if _sql_sha256(candidate) == previous_sha:
+                    updated_candidates.append(_repeat_risk_sql())
+                    repeat_risk_rewrites += 1
+                else:
+                    updated_candidates.append(candidate)
+            candidates = updated_candidates
         sql = candidates if multi else candidates[0]
         candidate_details = []
         for idx, (response, candidate_sql, temperature) in enumerate(zip(responses, candidates, temperatures)):
@@ -516,6 +573,8 @@ class SQLGenerator(_BaseSQLGenerator):
             "backend": responses[0].backend if responses else "",
             "model": responses[0].model if responses else "",
             "iteration": iteration,
+            "revision_feedback": revision_feedback,
+            "repeat_risk_rewrites": repeat_risk_rewrites,
         }
         if temperature_error:
             self.last_call["temperature_config_error"] = temperature_error

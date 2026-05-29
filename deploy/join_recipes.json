@@ -1,0 +1,77 @@
+{
+  "generated_at": "2026-05-29 13:18:52 MSK",
+  "version": "2026-05-29.tz2",
+  "recipes": [
+    {
+      "id": "application_client_segment_status",
+      "title": "application + client + segment + status",
+      "triggers": ["заявк", "application", "client", "клиент", "segment", "сегмент", "status", "статус"],
+      "tables": ["scp_application", "corp_tech_application", "sys_company", "business_segment"],
+      "joins": [
+        "scp_application.initiator_id = sys_company.id",
+        "scp_application.scp_business_segment = business_segment.id",
+        "corp_tech_application.initiator_id = sys_company.id",
+        "corp_tech_application.scp_business_segment = business_segment.id"
+      ],
+      "notes": [
+        "status fields are smallint numeric codes; do not compare them to text or boolean",
+        "use sys_company only for client attributes, not as an application fact table"
+      ]
+    },
+    {
+      "id": "application_manager_office_route",
+      "title": "application + manager + office route",
+      "triggers": ["заявк", "application", "manager", "менеджер", "office", "офис", "маршрут", "route"],
+      "tables": ["scp_application", "corp_tech_application", "sys_employee", "offices_psb"],
+      "joins": [
+        "scp_application.scp_arm_manager_id = sys_employee.id",
+        "scp_application.ca_rout_office_id = offices_psb.id",
+        "corp_tech_application.scp_arm_manager_id = sys_employee.id",
+        "corp_tech_application.ca_rout_office_id = offices_psb.id",
+        "sys_employee.ps_office = offices_psb.id"
+      ],
+      "notes": [
+        "for routing office use ca_rout_office_id; for employee home office use sys_employee.ps_office"
+      ]
+    },
+    {
+      "id": "credit_contract_client_quality",
+      "title": "credit_contract + client + overdue/quality",
+      "triggers": ["contract", "договор", "credit", "кредит", "client", "клиент", "overdue", "просроч", "quality", "качест"],
+      "tables": ["credit_contract", "sys_company"],
+      "joins": [
+        "credit_contract.link_customer_id = sys_company.id"
+      ],
+      "notes": [
+        "overdue fields live on credit_contract: days_delay_number, duration_over_on_date",
+        "quality category lives on credit_contract.quality_categor"
+      ]
+    },
+    {
+      "id": "participant_app_company",
+      "title": "participant_app + company",
+      "triggers": ["participant", "участник", "borrower", "заемщик", "company", "компан", "client", "клиент"],
+      "tables": ["participant_app", "sys_company", "application_obj"],
+      "joins": [
+        "participant_app.borrower_id = sys_company.id",
+        "participant_app.app_obj_id = application_obj.id"
+      ],
+      "notes": [
+        "participant_app stores participant rows; use borrower_id for company/client"
+      ]
+    },
+    {
+      "id": "top_clients_by_amount_segment",
+      "title": "top clients by amount + segment",
+      "triggers": ["top", "топ", "крупн", "amount", "сумм", "client", "клиент", "segment", "сегмент"],
+      "tables": ["credit_contract", "sys_company", "business_segment"],
+      "joins": [
+        "credit_contract.link_customer_id = sys_company.id",
+        "sys_company.business_segment = business_segment.id"
+      ],
+      "notes": [
+        "order top clients by SUM(credit_contract.credit_amount) or another amount explicitly requested by the task"
+      ]
+    }
+  ]
+}

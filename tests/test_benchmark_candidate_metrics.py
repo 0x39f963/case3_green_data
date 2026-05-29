@@ -12,6 +12,7 @@ def test_normalize_payload_extracts_generator_candidate_metrics() -> None:
 
     normalized = normalize_payload(RunPayload(**data), raw)
 
+    assert normalized.pipeline_run["abstain_reason"] == "max_iter"
     rows = normalized.generator_candidate_metrics
     assert len(rows) == 2
     assert rows[0]["candidate_index"] == 0
@@ -49,6 +50,7 @@ def _payload() -> dict:
                 "trace_id": trace_id,
                 "decision": "approve",
                 "needs_human": False,
+                "abstain_reason": "max_iter",
                 "generator_backend": "openrouter",
                 "generator_model": "qwen/qwen3.5-9b",
                 "generator_provider": "openrouter",

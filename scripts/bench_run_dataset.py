@@ -770,6 +770,7 @@ def result_row(
         "decision": str(meta.get("decision") or "unknown"),
         "approved": bool(result.get("approved")),
         "needs_human": bool(meta.get("needs_human")),
+        "abstain_reason": str(meta.get("abstain_reason") or ""),
         "iterations_used": result.get("iterations_used"),
         "duration_sec": duration,
         "finding_counts": finding_counts(trace),
